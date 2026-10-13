@@ -36,7 +36,7 @@ class LedgerTest(unittest.TestCase):
         sold=self.state()['items'][0];self.assertEqual(len(sold['attachments']),12);self.assertEqual(len(sold['history']),2)
         self.assertEqual(self.client.get('/api/photos/'+first['attachments'][0]['id']).status_code,404)
         x=self.client.get('/api/export');self.assertEqual(x.status_code,200)
-        wb=load_workbook(io.BytesIO(x.data));self.assertEqual(wb.sheetnames,['전체 상품','변경 이력','첨부 사진','설정','금액 집계'])
+        wb=load_workbook(io.BytesIO(x.data));self.assertEqual(wb.sheetnames,['전체 상품','변경 이력','첨부 사진','설정','금액 집계','구매 내역'])
         self.assertEqual(wb['전체 상품']['C2'].value,"'=SUM(1,2)")
         self.assertEqual(len(wb['첨부 사진']._images),12)
         self.assertEqual(wb['금액 집계']['D3'].value,180000)
@@ -91,7 +91,7 @@ class LedgerTest(unittest.TestCase):
         self.assertEqual(workbook['용품 입력']['B1'].value,'상품명')
         self.assertIsNone(workbook['용품 입력']['B2'].value)
         self.assertEqual(workbook['목록'].sheet_state,'hidden')
-        self.assertEqual(len(workbook['용품 입력'].data_validations.dataValidation),6)
+        self.assertEqual(len(workbook['용품 입력'].data_validations.dataValidation),11)
         self.assertEqual(self.excel_upload().status_code,400)
         rows=[['텐트','캠핑 텐트',datetime(2026,10,12),'온라인','나',310000,None,None,None,None,'동일 이름도 추가'],
               ['조명','랜턴','2026.10.13','직거래','캠퍼','₩35,000원','20,000','판매 완료','2026-10-13',None,None],
@@ -160,5 +160,33 @@ class LedgerTest(unittest.TestCase):
         updated=self.state()['settings']['display']
         self.assertEqual(updated['visibleColumns'],['category','name','purchase_price','sale_price'])
         self.assertIn('notes',updated['columns']);self.assertTrue(updated['showProductThumb'])
+
+    def test_quantity_weighted_average_and_used_restock(self):
+        item={**self.item(),'purchase_price':60000,'sale_price':0,'purchase_qty':6,'current_qty':5,'sold_qty':0,'purchase_type':'새상품'}
+        self.assertEqual(self.save(item).status_code,200)
+        old=self.state()['items'][0]
+        self.assertEqual((old['avg_unit_price'],old['current_value'],old['deducted_value'],old['disposed_qty']),(10000,50000,10000,1))
+        r=self.client.post('/api/items/'+old['id']+'/restock',json={'quantity':6,'cost':90000,'date':'2026-10-13','notes':'추가 구매','purchase_type':'중고','updated_at':old['updated_at']},headers=self.headers)
+        self.assertEqual(r.status_code,200)
+        new=self.state()['items'][0]
+        self.assertEqual((new['purchase_qty'],new['current_qty'],new['purchase_price']),(12,11,150000))
+        self.assertEqual((new['avg_unit_price'],new['current_value'],new['deducted_value']),(12500,137500,12500))
+        self.assertEqual(new['purchase_type'],'혼합');self.assertEqual(len(new['purchases']),2)
+        self.assertEqual(self.save({**new,'notes':'수정'},new['id']).status_code,200)
+        edited=self.state()['items'][0];self.assertEqual(len(edited['purchases']),2)
+        self.assertEqual(edited['purchase_type'],'혼합')
+        self.assertEqual(self.save({**edited,'current_qty':13},new['id']).status_code,400)
+        wb=load_workbook(io.BytesIO(self.client.get('/api/export').data));self.assertEqual(wb['구매 내역'].max_row,3)
+        backup=self.client.get('/api/backup').data
+        self.assertEqual(self.client.post('/api/restore',data={'backup':(io.BytesIO(backup),'backup.zip')},headers=self.headers).status_code,200)
+        self.assertEqual(self.state()['items'][0]['current_value'],137500)
+
+    def test_shared_purchase_cost_remains_unconfirmed(self):
+        self.save({**self.item(),'name':'공동구매 텐트','purchase_price':30000,'cost_unconfirmed':True,'shared_purchase_total':30000})
+        self.save({**self.item(),'name':'공동구매 의자','purchase_price':0,'sale_price':75000,'status':'sold','purchase_qty':4,'current_qty':0,'sold_qty':4,'cost_unconfirmed':True,'shared_purchase_total':30000})
+        state=self.state();self.assertEqual(sum(i['purchase_price'] for i in state['items']),30000)
+        self.assertTrue(all(i['avg_unit_price'] is None for i in state['items']))
+        self.assertTrue(all(i['current_value'] is None for i in state['items']))
+        chair=next(i for i in state['items'] if i['name']=='공동구매 의자');self.assertEqual(chair['sold_qty'],4)
 
 if __name__=='__main__':unittest.main()
