@@ -23,6 +23,7 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -34,7 +35,7 @@ import javax.crypto.spec.GCMParameterSpec;
 
 public class MainActivity extends Activity {
     private static final String BASE="https://ha.badara.co.kr/camp-ledger/";
-    private static final String OWNER="https://ha.badara.co.kr/5ec8f074_camp_ledger";
+    
     private static final String ALIAS="camp-ledger-device-key";
     private WebView web;
     private ValueCallback<Uri[]> chooser;
@@ -82,8 +83,9 @@ public class MainActivity extends Activity {
     private void showConnect() {
         LinearLayout layout=new LinearLayout(this);layout.setOrientation(LinearLayout.VERTICAL);layout.setPadding(48,100,48,48);layout.setBackgroundColor(Color.rgb(246,247,242));
         TextView title=new TextView(this);title.setText("△  캠핑 장부");title.setTextSize(28);title.setTextColor(Color.rgb(40,83,69));layout.addView(title);
-        TextView text=new TextView(this);text.setText("처음 한 번 기기를 연결해주세요.\n\nHome Assistant의 장부 설정에서 ‘앱 설치·연결’을 열고 ‘안드로이드 앱 연결’을 누르면 자동 접속합니다.");text.setTextSize(16);text.setPadding(0,32,0,32);layout.addView(text);
-        Button open=new Button(this);open.setText("장부 설정 열기");open.setOnClickListener(v->startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(OWNER))));layout.addView(open);setContentView(layout);
+        TextView text=new TextView(this);text.setText("처음 한 번만 기기를 연결하세요.\n\n장부의 앱 설치·연결에서 만든 연결키를 붙여넣으면, 이후에는 이 앱에서 장부만 바로 열립니다.");text.setTextSize(16);text.setPadding(0,32,0,32);layout.addView(text);
+        EditText entry=new EditText(this);entry.setHint("기기 연결키 붙여넣기");entry.setSingleLine(true);entry.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);layout.addView(entry);
+        Button open=new Button(this);open.setText("장부 연결");open.setOnClickListener(v->{String value=entry.getText().toString().trim();if(!value.matches("[A-Za-z0-9_-]{40,100}")){entry.setError("장부에서 만든 연결키를 붙여넣어주세요.");return;}try{saveKey(value);key=value;showLedger();}catch(Exception e){entry.setError("연결 정보를 저장하지 못했습니다.");}});layout.addView(open);setContentView(layout);
     }
     private void showLedger() {
         if(web!=null)web.destroy();web=new WebView(this);web.setBackgroundColor(Color.rgb(246,247,242));

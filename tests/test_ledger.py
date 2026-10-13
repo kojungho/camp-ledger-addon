@@ -30,6 +30,19 @@ class LedgerTest(unittest.TestCase):
         if photos:data['photos']=[(self.image(),f'사진{n}.png') for n in range(photos)]
         return self.client.open('/api/items'+('/'+ident if ident else ''),method='PUT' if ident else 'POST',data=data,headers=self.headers)
     def state(self):return self.client.get('/api/state').get_json()
+    def test_staged_records_undo_and_validation(self):
+        r=self.save(self.item(purchase_qty=6,current_qty=6,sold_qty=0)); ident=r.json['id']
+        old=self.state()['items'][0]
+        edit={**old,'purchase_qty':8,'current_qty':7,'purchase_price':400000,'operations':[{'kind':'restock','quantity':2,'cost':100000,'date':'2026-10-14','purchase_type':'선물','notes':'추가'},{'kind':'consume','quantity':1,'date':'2026-10-14','notes':'사용'}]}
+        self.assertEqual(self.save(edit,ident).status_code,200)
+        item=self.state()['items'][0]; self.assertEqual(len(item['purchases']),2); self.assertEqual(len(item['consumptions']),1); self.assertEqual(item['current_value'],350000)
+        bad={**item,'current_qty':9}; r=self.save(bad,ident); self.assertEqual(r.status_code,400);self.assertIn('current_qty',r.json['fields']);self.assertEqual(self.state()['items'][0]['current_qty'],7)
+        undo={**item,'purchase_qty':6,'current_qty':6,'purchase_price':300000,'operations':[{'kind':'undo_consume','id':item['consumptions'][0]['id']},{'kind':'undo_purchase','id':item['purchases'][1]['id']}]}
+        self.assertEqual(self.save(undo,ident).status_code,200)
+        item=self.state()['items'][0];self.assertEqual(len(item['purchases']),1);self.assertEqual(item['consumptions'],[]);self.assertEqual(item['current_qty'],6)
+        s=self.state()['settings'];s['purchase_types']=['선물','중고'];s['display']['cellPadding']=0;s['display']['columns']['name'].update(width=24,auto=True);s['display']['columnOrder']=list(reversed(ledger.DISPLAY_LABELS));s['display']['visibleColumns']=['name','category']
+        self.assertEqual(self.client.put('/api/settings',json=s,headers=self.headers).status_code,200);self.assertEqual(self.state()['settings']['purchase_types'],['선물','중고'])
+
     def test_full_lifecycle_and_export(self):
         r=self.save(self.item(),photos=12);self.assertEqual(r.status_code,200)
         first=self.state()['items'][0];self.assertEqual(len(first['attachments']),12);self.assertEqual(sum(a['kind']=='receipt' for a in first['attachments']),6)
@@ -38,7 +51,7 @@ class LedgerTest(unittest.TestCase):
         sold=self.state()['items'][0];self.assertEqual(len(sold['attachments']),12);self.assertEqual(len(sold['history']),2)
         self.assertEqual(self.client.get('/api/photos/'+first['attachments'][0]['id']).status_code,404)
         x=self.client.get('/api/export');self.assertEqual(x.status_code,200)
-        wb=load_workbook(io.BytesIO(x.data));self.assertEqual(wb.sheetnames,['전체 상품','변경 이력','첨부 사진','설정','금액 집계','구매 내역'])
+        wb=load_workbook(io.BytesIO(x.data));self.assertEqual(wb.sheetnames,['전체 상품','변경 이력','첨부 사진','설정','금액 집계','구매 내역','사용·소진 내역'])
         self.assertEqual(wb['전체 상품']['C2'].value,"'=SUM(1,2)")
         self.assertEqual(len(wb['첨부 사진']._images),12)
         self.assertEqual(wb['금액 집계']['D3'].value,180000)

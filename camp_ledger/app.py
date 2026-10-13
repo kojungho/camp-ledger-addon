@@ -34,6 +34,7 @@ DEFAULT['display'].update(visibleColumns=['category','name','purchase_price','sa
                           visibleSummaries=['purchase','sale','net','owned'],showProductThumb=True)
 
 def normalize_settings(s):
+    s.setdefault('purchase_types',['미기재','새상품','중고'])
     d=s.setdefault('display',{})
     for key in ('visibleColumns','visibleSummaries','showProductThumb'):
         if key not in d: d[key]=list(DEFAULT['display'][key]) if isinstance(DEFAULT['display'][key],list) else DEFAULT['display'][key]
@@ -41,6 +42,9 @@ def normalize_settings(s):
     for key,value in DEFAULT['display']['columns'].items():
         if key not in columns: columns[key]=dict(value)
     return s
+
+class InputError(ValueError):
+    def __init__(self,message,*fields): super().__init__(message); self.fields=list(fields)
 
 class ManagedConnection(sqlite3.Connection):
     def __exit__(self, *args):
@@ -74,31 +78,33 @@ def valid_item(raw):
     for k in FIELDS:
         if k not in (*PRICE_FIELDS,*QTY_FIELDS,'cost_unconfirmed') and not isinstance(obj[k],str): raise ValueError('입력 형식을 확인해주세요.')
     obj['name']=obj['name'].strip()
-    if not obj['name']: raise ValueError('상품명을 입력해주세요.')
+    if not obj['name']: raise InputError('상품명을 입력해주세요.','name')
     if obj['status'] not in STATUSES: raise ValueError('상태를 확인해주세요.')
-    if obj['purchase_type'] not in ('새상품','중고','미기재','혼합'): raise ValueError('구매유형은 새상품, 중고, 미기재로 입력해주세요.')
+    if not obj['purchase_type'].strip() or len(obj['purchase_type'])>80: raise InputError('구매유형을 확인해주세요.','purchase_type')
     obj['cost_unconfirmed']=raw.get('cost_unconfirmed',False)
     if type(obj['cost_unconfirmed']) is not bool: raise ValueError('원가 확정 여부를 확인해주세요.')
     for k in PRICE_FIELDS:
         v=raw.get(k,0)
-        if isinstance(v,bool) or not str(v).isdigit(): raise ValueError('금액은 0 이상의 정수로 입력해주세요.')
+        if isinstance(v,bool) or not str(v).isdigit(): raise InputError('금액은 0 이상의 정수로 입력해주세요.',k)
         obj[k]=int(v)
-        if obj[k]>999999999999: raise ValueError('금액이 너무 큽니다.')
+        if obj[k]>999999999999: raise InputError('금액이 너무 큽니다.',k)
     for k in ('purchase_date','sale_date','disposal_date'):
-        if obj[k]: date.fromisoformat(obj[k])
+        if obj[k]:
+            try: date.fromisoformat(obj[k])
+            except ValueError: raise InputError('날짜를 확인해주세요.',k)
     for k in QTY_FIELDS:
         default=1 if k=='purchase_qty' else obj['purchase_qty'] if k=='current_qty' and obj['status']=='owned' else obj['purchase_qty'] if k=='sold_qty' and obj['status']=='sold' else 0
         v=raw.get(k,default)
         if v is None or v=='': v=default
-        if isinstance(v,bool) or not str(v).isdigit(): raise ValueError('수량은 0 이상의 정수로 입력해주세요.')
+        if isinstance(v,bool) or not str(v).isdigit(): raise InputError('수량은 0 이상의 정수로 입력해주세요.',k)
         obj[k]=int(v)
-    if obj['purchase_qty']<1 or obj['purchase_qty']>1000000000: raise ValueError('구매수량은 1~1,000,000,000개로 입력해주세요.')
+    if obj['purchase_qty']<1 or obj['purchase_qty']>1000000000: raise InputError('구매수량은 1~1,000,000,000개로 입력해주세요.','purchase_qty')
     if obj['status']=='sold' and obj['current_qty']:
         obj['sold_qty']+=obj['current_qty']; obj['current_qty']=0
     elif obj['status']=='disposed':
         obj['current_qty']=0
         if obj['sold_qty']==obj['purchase_qty']: obj['sold_qty']=0
-    if obj['current_qty']+obj['sold_qty']>obj['purchase_qty']: raise ValueError('현재수량과 판매수량의 합이 구매수량을 넘을 수 없습니다.')
+    if obj['current_qty']+obj['sold_qty']>obj['purchase_qty']: raise InputError('현재수량과 판매수량의 합이 구매수량을 넘을 수 없습니다.','purchase_qty','current_qty','sold_qty')
     obj['status']='owned' if obj['current_qty'] else 'sold' if obj['sold_qty'] else 'disposed'
     return obj
 
@@ -107,7 +113,7 @@ def stock_view(item):
     item.setdefault('current_qty',item['purchase_qty'] if item['status']=='owned' else 0)
     item.setdefault('sold_qty',item['purchase_qty'] if item['status']=='sold' else 0)
     item.setdefault('cost_unconfirmed',False);item.setdefault('shared_purchase_total',0)
-    item.setdefault('purchase_type','미기재')
+    item.setdefault('purchase_type','미기재'); item.setdefault('consumptions',[])
     item['disposed_qty']=item['purchase_qty']-item['current_qty']-item['sold_qty']
     item['avg_unit_price']=float((Decimal(item['purchase_price'])/item['purchase_qty']).quantize(Decimal('0.01'),rounding=ROUND_HALF_UP))
     item['current_value']=int((Decimal(item['purchase_price'])*item['current_qty']/item['purchase_qty']).quantize(Decimal('1'),rounding=ROUND_HALF_UP))
@@ -127,22 +133,55 @@ def purchase_ledger(obj,old=None):
     else:
         quantity=obj['purchase_qty']-sum(p['quantity'] for p in purchases[1:])
         cost=obj['purchase_price']-sum(p['cost'] for p in purchases[1:])
-        if quantity<1 or cost<0: raise ValueError('누적 구매수량·금액이 추가 구매 기록보다 작을 수 없습니다.')
+        if quantity<1 or cost<0: raise InputError('누적 구매수량·금액이 추가 구매 기록보다 작을 수 없습니다.','purchase_qty','purchase_price')
         purchases[0].update(quantity=quantity,cost=cost,date=obj['purchase_date'])
         if obj['purchase_type']!='혼합': purchases[0]['purchase_type']=obj['purchase_type']
     return purchases
 
+def edit_records(obj,old,operations,history,stamp):
+    if not isinstance(operations,list) or len(operations)>100: raise ValueError('구매·소진 기록을 확인해주세요.')
+    purchases=json.loads(json.dumps(old['purchases'])) if old else []
+    consumptions=json.loads(json.dumps(old.get('consumptions',[]))) if old else []
+    for op in operations:
+        kind=op.get('kind')
+        if kind in ('restock','consume'):
+            q=op.get('quantity'); cost=op.get('cost',0)
+            if type(q) is not int or not 1<=q<=1000000000: raise InputError('기록 수량을 확인해주세요.','current_qty')
+            if type(cost) is not int or not 0<=cost<=999999999999: raise InputError('구매금액을 확인해주세요.','purchase_price')
+            dt=op.get('date',''); notes=op.get('notes','')
+            if not isinstance(dt,str) or not isinstance(notes,str): raise ValueError('기록 입력을 확인해주세요.')
+            if dt: date.fromisoformat(dt)
+            entry={'id':str(uuid.uuid4()),'date':dt,'quantity':q,'notes':notes}
+            if kind=='restock':
+                pt=op.get('purchase_type') or '미기재'
+                if not isinstance(pt,str) or len(pt)>80: raise InputError('구매유형을 확인해주세요.','purchase_type')
+                entry.update(cost=cost,purchase_type=pt); purchases.append(entry)
+            else:
+                entry['cost']=None if obj['cost_unconfirmed'] else round(obj['purchase_price']*q/obj['purchase_qty']);consumptions.append(entry)
+            history.append({'at':stamp,'changes':[{'field':'추가 구매' if kind=='restock' else '사용·소진','before':'','after':f'{q}개'+(f' / {cost:,}원' if kind=='restock' else '')+(' · '+notes if notes else '')}]})
+        elif kind in ('undo_purchase','undo_consume'):
+            rows=purchases if kind=='undo_purchase' else consumptions
+            matches=[(n,p) for n,p in enumerate(rows) if p['id']==op.get('id')]
+            if not matches or (kind=='undo_purchase' and matches[0][0]==0): raise ValueError('되돌릴 수 없는 기록입니다.')
+            n,entry=matches[0];rows.pop(n)
+            history.append({'at':stamp,'changes':[{'field':'구매 되돌리기' if kind=='undo_purchase' else '소진 되돌리기','before':f"{entry['quantity']}개",'after':'취소'}]})
+        else: raise ValueError('기록 종류를 확인해주세요.')
+    return purchase_ledger(obj,{'purchases':purchases} if purchases else None),consumptions
+
 def valid_settings(s):
     s=normalize_settings(s)
-    for key in ('categories','methods','buyers'):
+    for key in ('categories','methods','buyers','purchase_types'):
         if not isinstance(s.get(key),list) or any(not isinstance(x,str) or not x.strip() for x in s[key]) or len(set(s[key]))!=len(s[key]): raise ValueError('목록 값을 확인해주세요.')
     d=s['display']
-    limits={'rowHeight':(40,200),'headerHeight':(32,120),'cellPadding':(8,60),'detailFont':(12,30),'titleFont':(20,48)}
+    limits={'rowHeight':(40,200),'headerHeight':(32,120),'cellPadding':(0,60),'detailFont':(12,30),'titleFont':(20,48)}
     for k,(low,high) in limits.items():
         if type(d.get(k)) is not int or not low<=d[k]<=high: raise ValueError('화면 크기 설정이 범위를 벗어났습니다.')
     for key in DISPLAY_LABELS:
         col=d['columns'][key]
-        if type(col['font']) is not int or not 12<=col['font']<=30 or type(col['width']) is not int or not 90<=col['width']<=800: raise ValueError('열 설정을 확인해주세요.')
+        if type(col['font']) is not int or not 12<=col['font']<=30 or type(col['width']) is not int or not 24<=col['width']<=1600: raise ValueError('열 설정을 확인해주세요.')
+        if type(col.get('auto',False)) is not bool: raise ValueError('자동 너비 설정을 확인해주세요.')
+    order=d.setdefault('columnOrder',list(DISPLAY_LABELS))
+    if not isinstance(order,list) or len(order)!=len(DISPLAY_LABELS) or set(order)!=set(DISPLAY_LABELS): raise ValueError('표시 순서를 확인해주세요.')
     for key,allowed in [('visibleColumns',DISPLAY_LABELS),('visibleSummaries',('purchase','sale','net','owned'))]:
         values=d[key]
         if not isinstance(values,list) or any(not isinstance(v,str) or v not in allowed for v in values) or len(set(values))!=len(values): raise ValueError('메인 화면 표시 항목을 확인해주세요.')
@@ -161,7 +200,7 @@ def http_error(e): return jsonify(error=e.description),e.code
 @app.errorhandler(ValueError)
 @app.errorhandler(KeyError)
 @app.errorhandler(zipfile.BadZipFile)
-def value_error(e): return jsonify(error=str(e) or '파일 또는 입력값을 확인해주세요.'),400
+def value_error(e): return jsonify(error=str(e) or '파일 또는 입력값을 확인해주세요.',fields=getattr(e,'fields',[])),400
 
 @app.before_request
 def protect():
@@ -225,7 +264,7 @@ def save(ident=None):
         if removed: changes.append({'field':'사진 삭제','before':', '.join(removed),'after':''})
         if changes: history.append({'at':stamp,'changes':changes})
         obj.update(id=ident,created_at=old['created_at'] if old else stamp,updated_at=stamp,history=history)
-        obj['purchases']=purchase_ledger(obj,old)
+        obj['purchases'],obj['consumptions']=edit_records(obj,old,raw.get('operations',[]),history,stamp)
         c.execute('INSERT INTO items VALUES(?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body',(ident,json.dumps(obj,ensure_ascii=False)))
         for aid in delete_ids: c.execute('DELETE FROM attachments WHERE id=? AND item_id=?',(aid,ident))
         for aid,name,mime,data,kind in uploads: c.execute('INSERT INTO attachments(id,item_id,name,mime,data,kind) VALUES(?,?,?,?,?,?)',(aid,ident,name,mime,data,kind))
@@ -240,7 +279,7 @@ def restock(ident):
     if purchased: date.fromisoformat(purchased)
     notes=raw.get('notes','')
     purchase_type=raw.get('purchase_type') or '미기재'
-    if purchase_type not in ('새상품','중고','미기재'): raise ValueError('구매유형을 확인해주세요.')
+    if not isinstance(purchase_type,str) or not purchase_type.strip() or len(purchase_type)>80: raise InputError('구매유형을 확인해주세요.','purchase_type')
     if not isinstance(notes,str): raise ValueError('메모를 확인해주세요.')
     with conn() as c:
         c.execute('BEGIN IMMEDIATE'); item=get_item(c,ident)
@@ -271,9 +310,10 @@ def excel_value(v):
     return v
 @app.get('/api/export')
 def export():
-    wb=Workbook(); ws=wb.active; ws.title='전체 상품'; hist=wb.create_sheet('변경 이력'); photos=wb.create_sheet('첨부 사진'); prefs=wb.create_sheet('설정'); summary=wb.create_sheet('금액 집계'); purchases_sheet=wb.create_sheet('구매 내역')
+    wb=Workbook(); ws=wb.active; ws.title='전체 상품'; hist=wb.create_sheet('변경 이력'); photos=wb.create_sheet('첨부 사진'); prefs=wb.create_sheet('설정'); summary=wb.create_sheet('금액 집계'); purchases_sheet=wb.create_sheet('구매 내역'); consumption_sheet=wb.create_sheet('사용·소진 내역')
     ws.append(['ID']+list(FIELDS.values())+['폐기·소진수량','평균단가','현재금액','차감금액']+['사진 수','사진 파일명','등록 시각','수정 시각'])
     purchases_sheet.append(['상품 ID','상품명','구매일자','구매수량','구입금액','개당가격','구매유형','메모'])
+    consumption_sheet.append(['상품 ID','상품명','사용일자','소진수량','소진금액','메모'])
     hist.append(['상품 ID','상품명','변경 시각','항목','변경 전','변경 후'])
     photos.append(['상품 ID','상품명','첨부 ID','파일명','형식','종류','사진'])
     with conn() as c:
@@ -282,6 +322,8 @@ def export():
         for it in items:
             vals=[STATUSES[it[k]] if k=='status' else ('미확정' if it[k] else '확정') if k=='cost_unconfirmed' else it[k] for k in FIELDS]
             ws.append([excel_value(v) for v in [it['id']]+vals+[it['disposed_qty'],it['avg_unit_price'] if it['avg_unit_price'] is not None else '미확정',it['current_value'] if it['current_value'] is not None else '미확정',it['deducted_value'] if it['deducted_value'] is not None else '미확정']+[len(it['attachments']),', '.join(a['name'] for a in it['attachments']),it['created_at'],it['updated_at']]])
+            for consumed in it['consumptions']:
+                consumption_sheet.append([excel_value(v) for v in [it['id'],it['name'],consumed['date'],consumed['quantity'],consumed.get('cost') if consumed.get('cost') is not None else '미확정',consumed['notes']]])
             for purchase in it['purchases']:
                 purchases_sheet.append([excel_value(v) for v in [it['id'],it['name'],purchase['date'],purchase['quantity'],purchase['cost'],round(purchase['cost']/purchase['quantity'],2) if not it['cost_unconfirmed'] else '미확정',purchase['purchase_type'],purchase['notes']]])
             for event in it['history']:
@@ -292,7 +334,7 @@ def export():
                     im.thumbnail((180,130)); buf=io.BytesIO(); im.convert('RGB').save(buf,'PNG'); buf.seek(0)
                 xl=XLImage(buf); photos.add_image(xl,f'G{photos.max_row}'); photos.row_dimensions[photos.max_row].height=105
         prefs.append(['항목','값']); s=settings(c)
-        for k in ('categories','methods','buyers'): prefs.append([{'categories':'구분','methods':'구매방식','buyers':'구매자'}[k],json.dumps(s[k],ensure_ascii=False)])
+        for k in ('categories','methods','buyers','purchase_types'): prefs.append([{'categories':'구분','methods':'구매방식','buyers':'구매자','purchase_types':'구매유형'}[k],json.dumps(s[k],ensure_ascii=False)])
         prefs.append(['화면 설정',json.dumps(s['display'],ensure_ascii=False)])
     summary.append(['상태','수량','구입 합계','실제 판매 합계','순지출'])
     for status,label in list(STATUSES.items())+[('all','전체')]:
@@ -348,7 +390,7 @@ def import_template():
         dv.showErrorMessage=not bool(key); dv.errorTitle='상태를 확인해주세요'; dv.error='보유, 판매, 폐기 중에서 선택해주세요.'
         ws.add_data_validation(dv); dv.add(f'{target}2:{target}20001')
     type_column=get_column_letter(list(FIELDS).index('purchase_type')+1)
-    dv=DataValidation(type='list',formula1='"새상품,중고,미기재"',allow_blank=True);ws.add_data_validation(dv);dv.add(f'{type_column}2:{type_column}20001')
+    dv=DataValidation(type='list',formula1='"'+','.join(s['purchase_types'])+'"',allow_blank=True);ws.add_data_validation(dv);dv.add(f'{type_column}2:{type_column}20001')
     for key in QTY_FIELDS:
         col=get_column_letter(list(FIELDS).index(key)+1)
         dv=DataValidation(type='whole',operator='between',formula1=1 if key=='purchase_qty' else 0,formula2=1000000000,allow_blank=True)
@@ -487,7 +529,7 @@ def commit_import():
             # Always insert under a new ID; existing records and attachments are untouched.
             c.execute('INSERT INTO items VALUES(?,?)',(ident,json.dumps(it,ensure_ascii=False)))
             ids.append(ident)
-            for field,key in [('category','categories'),('method','methods'),('buyer','buyers')]:
+            for field,key in [('category','categories'),('method','methods'),('buyer','buyers'),('purchase_type','purchase_types')]:
                 if it[field] and it[field] not in s[key]: s[key].append(it[field])
         c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(s,ensure_ascii=False),))
         result={'ok':True,'count':len(ids),'ids':ids}
@@ -525,6 +567,11 @@ def restore():
                 for ch in h['changes']:
                     if not isinstance(ch['field'],str) or not isinstance(ch['before'],(str,int)) or not isinstance(ch['after'],(str,int)): raise ValueError('이력 형식을 확인해주세요.')
             it.update(id=ident,history=raw['history']); it['purchases']=raw.get('purchases') or purchase_ledger(it)
+            it['consumptions']=raw.get('consumptions',[])
+            if not isinstance(it['consumptions'],list): raise ValueError('소진 내역 형식을 확인해주세요.')
+            for consumed in it['consumptions']:
+                if type(consumed.get('quantity')) is not int or consumed['quantity']<1 or not isinstance(consumed.get('notes'),str): raise ValueError('소진 내역 형식을 확인해주세요.')
+                if consumed.get('date'): date.fromisoformat(consumed['date'])
             for purchase in it['purchases']:
                 if type(purchase.get('quantity')) is not int or purchase['quantity']<1 or type(purchase.get('cost')) is not int or purchase['cost']<0 or not isinstance(purchase.get('notes'),str): raise ValueError('구매 내역 형식을 확인해주세요.')
                 if purchase.get('date'): date.fromisoformat(purchase['date'])
