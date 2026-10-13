@@ -1,5 +1,6 @@
 import importlib.util, io, json, os, tempfile, unittest, zipfile
 from pathlib import Path
+from datetime import datetime
 from PIL import Image
 from openpyxl import load_workbook
 
@@ -15,6 +16,7 @@ class LedgerTest(unittest.TestCase):
         self.headers={'X-Camp-Request':'1'}
         with ledger.conn() as c:
             c.execute('DELETE FROM items')
+            c.execute('DELETE FROM imports')
             c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(ledger.DEFAULT),))
     def image(self):
         b=io.BytesIO();Image.new('RGB',(32,24),'green').save(b,'PNG');b.seek(0);return b
@@ -70,5 +72,93 @@ class LedgerTest(unittest.TestCase):
             self.assertEqual(self.client.get('/api/state').status_code,403)
             self.assertEqual(self.client.get('/api/state',environ_base={'REMOTE_ADDR':'172.30.32.2'}).status_code,200)
         finally:os.environ.pop('HA_INGRESS',None)
+
+    def excel_upload(self,rows=None,headers=None):
+        workbook=load_workbook(io.BytesIO(self.client.get('/api/import/template').data))
+        ws=workbook['용품 입력']
+        if headers:
+            for n,header in enumerate(headers,1):ws.cell(1,n,header)
+        for n,row in enumerate(rows or [],2):
+            for col,value in enumerate(row,1):
+                if value is not None:ws.cell(n,col,value)
+        buf=io.BytesIO();workbook.save(buf);buf.seek(0)
+        return self.client.post('/api/import/preview',data={'excel':(buf,'새용품.xlsx')},headers=self.headers)
+
+    def test_excel_template_and_append_only_import(self):
+        original=self.save(self.item(),photos=2).get_json()['id']
+        before=self.state()['items'][0]
+        workbook=load_workbook(io.BytesIO(self.client.get('/api/import/template').data))
+        self.assertEqual(workbook['용품 입력']['B1'].value,'상품명')
+        self.assertIsNone(workbook['용품 입력']['B2'].value)
+        self.assertEqual(workbook['목록'].sheet_state,'hidden')
+        self.assertEqual(len(workbook['용품 입력'].data_validations.dataValidation),6)
+        self.assertEqual(self.excel_upload().status_code,400)
+        rows=[['텐트','캠핑 텐트',datetime(2026,10,12),'온라인','나',310000,None,None,None,None,'동일 이름도 추가'],
+              ['조명','랜턴','2026.10.13','직거래','캠퍼','₩35,000원','20,000','판매 완료','2026-10-13',None,None],
+              [None,None,None,None,None,None,None,None,None,None,None],
+              ['부품','폐기 부품','20261001',None,None,1000,0,'폐기',None,'2026/10/13','파손']]
+        response=self.excel_upload(rows);self.assertEqual(response.status_code,200,response.get_json())
+        result=response.get_json();self.assertTrue(result['ok']);self.assertEqual(result['count'],3)
+        self.assertEqual(result['purchase_total'],346000);self.assertEqual(result['sale_total'],20000)
+        self.assertEqual(len(self.state()['items']),1)
+        commit=self.client.post('/api/import/commit',json={'token':result['token']},headers=self.headers)
+        self.assertEqual(commit.status_code,200);self.assertEqual(commit.get_json()['count'],3)
+        state=self.state();self.assertEqual(len(state['items']),4)
+        retained=next(i for i in state['items'] if i['id']==original);self.assertEqual(retained,before)
+        self.assertEqual(sum(i['name']=='캠핑 텐트' for i in state['items']),2)
+        self.assertIn('조명',state['settings']['categories']);self.assertIn('직거래',state['settings']['methods']);self.assertIn('캠퍼',state['settings']['buyers'])
+        imported=next(i for i in state['items'] if i['name']=='랜턴')
+        self.assertEqual(imported['status'],'sold');self.assertEqual(imported['history'][0]['changes'][0]['field'],'엑셀 등록')
+        repeat=self.client.post('/api/import/commit',json={'token':result['token']},headers=self.headers)
+        self.assertEqual(repeat.get_json(),commit.get_json());self.assertEqual(len(self.state()['items']),4)
+        new_preview=self.excel_upload(rows).get_json()
+        self.assertEqual(self.client.post('/api/import/commit',json={'token':new_preview['token']},headers=self.headers).status_code,200)
+        self.assertEqual(len(self.state()['items']),7)
+
+    def test_excel_errors_do_not_write_partial_records(self):
+        self.save(self.item(),photos=1);before=self.state()
+        result=self.excel_upload([['의자','정상 의자',None,None,None,50000],
+            ['의자','오류 의자','2026-02-30',None,None,-1,3.5,'미정'],
+            ['텐트',None,None,None,None,100],
+            ['텐트','=SUM(1,2)',None,None,None,100]]).get_json()
+        self.assertFalse(result['ok']);self.assertNotIn('token',result);self.assertGreaterEqual(result['error_count'],6)
+        self.assertEqual(self.state(),before)
+        self.assertEqual(self.client.post('/api/import/commit',json={'token':'invalid'},headers=self.headers).status_code,400)
+        bad=self.client.post('/api/import/preview',data={'excel':(io.BytesIO(b'fake'),'bad.xlsx')},headers=self.headers)
+        self.assertEqual(bad.status_code,400)
+        wrong=self.client.post('/api/import/preview',data={'excel':(io.BytesIO(b'fake'),'bad.xls')},headers=self.headers)
+        self.assertEqual(wrong.status_code,400);self.assertEqual(self.state(),before)
+
+    def test_export_can_be_appended_and_preview_expiry(self):
+        self.save(self.item())
+        exported=self.client.get('/api/export').data
+        preview=self.client.post('/api/import/preview',data={'excel':(io.BytesIO(exported),'export.xlsx')},headers=self.headers).get_json()
+        self.assertTrue(preview['ok']);self.assertEqual(preview['count'],1)
+        with ledger.conn() as c:c.execute('UPDATE imports SET created=0 WHERE id=?',(preview['token'],))
+        self.assertEqual(self.client.post('/api/import/commit',json={'token':preview['token']},headers=self.headers).status_code,400)
+        self.assertEqual(len(self.state()['items']),1)
+
+    def test_all_display_fields_and_legacy_settings(self):
+        self.save(self.item())
+        s=self.state()['settings'];s['display']['visibleColumns']=list(ledger.DISPLAY_LABELS)
+        s['display']['visibleSummaries']=['purchase','owned'];s['display']['columns']['notes']={'font':18,'width':400}
+        self.assertEqual(self.client.put('/api/settings',json=s,headers=self.headers).status_code,200)
+        self.assertEqual(self.state()['settings']['display']['visibleColumns'],list(ledger.DISPLAY_LABELS))
+        s['display']['visibleColumns']=['buyer','status'];s['display']['visibleSummaries']=[]
+        self.assertEqual(self.client.put('/api/settings',json=s,headers=self.headers).status_code,200)
+        wb=load_workbook(io.BytesIO(self.client.get('/api/export').data))
+        self.assertIn('상품명',[c.value for c in wb['전체 상품'][1]])
+        self.assertEqual(len(self.state()['items']),1)
+        s['display']['visibleColumns']=[]
+        self.assertEqual(self.client.put('/api/settings',json=s,headers=self.headers).status_code,400)
+        s['display']['visibleColumns']=['unknown']
+        self.assertEqual(self.client.put('/api/settings',json=s,headers=self.headers).status_code,400)
+        legacy=json.loads(json.dumps(ledger.DEFAULT))
+        for key in ('visibleColumns','visibleSummaries','showProductThumb'):legacy['display'].pop(key)
+        legacy['display']['columns']={k:v for k,v in legacy['display']['columns'].items() if k in ('category','name','purchase_price','sale_price')}
+        with ledger.conn() as c:c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(legacy),))
+        updated=self.state()['settings']['display']
+        self.assertEqual(updated['visibleColumns'],['category','name','purchase_price','sale_price'])
+        self.assertIn('notes',updated['columns']);self.assertTrue(updated['showProductThumb'])
 
 if __name__=='__main__':unittest.main()

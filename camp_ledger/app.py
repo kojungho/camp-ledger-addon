@@ -1,10 +1,14 @@
-import io, json, os, sqlite3, uuid, zipfile
+import io, json, os, sqlite3, uuid, zipfile, time, math
 from datetime import date, datetime
 from pathlib import Path
 from flask import Flask, request, jsonify, send_file, abort
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.drawing.image import Image as XLImage
+from openpyxl.worksheet.datavalidation import DataValidation
+from openpyxl.workbook.defined_name import DefinedName
+from openpyxl.comments import Comment
+from openpyxl.utils.exceptions import InvalidFileException
 from PIL import Image
 
 app = Flask(__name__, static_folder='static')
@@ -15,6 +19,20 @@ DB = DATA / 'ledger.sqlite3'
 DEFAULT = {'categories':['부품','텐트','의자','테이블','소모품','기타'], 'methods':['온라인','오프라인'], 'buyers':['나','가족'], 'display': {'rowHeight':72,'headerHeight':48,'cellPadding':20,'detailFont':15,'titleFont':32,'columns':{'category':{'font':14,'width':130},'name':{'font':16,'width':360},'purchase_price':{'font':16,'width':165},'sale_price':{'font':16,'width':165}}}}
 FIELDS = {'category':'구분','name':'상품명','purchase_date':'구입일자','method':'구매방식','buyer':'구매자','purchase_price':'구입가격','sale_price':'판매가격','status':'상태','sale_date':'판매일자','disposal_date':'폐기일자','notes':'메모'}
 STATUSES = {'owned':'보유','sold':'판매','disposed':'폐기'}
+DISPLAY_LABELS = {**FIELDS, 'photos':'사진'}
+for key in DISPLAY_LABELS:
+    DEFAULT['display']['columns'].setdefault(key, {'font':14,'width':320 if key=='notes' else 160})
+DEFAULT['display'].update(visibleColumns=['category','name','purchase_price','sale_price'],
+                          visibleSummaries=['purchase','sale','net','owned'],showProductThumb=True)
+
+def normalize_settings(s):
+    d=s.setdefault('display',{})
+    for key in ('visibleColumns','visibleSummaries','showProductThumb'):
+        if key not in d: d[key]=list(DEFAULT['display'][key]) if isinstance(DEFAULT['display'][key],list) else DEFAULT['display'][key]
+    columns=d.setdefault('columns',{})
+    for key,value in DEFAULT['display']['columns'].items():
+        if key not in columns: columns[key]=dict(value)
+    return s
 
 class ManagedConnection(sqlite3.Connection):
     def __exit__(self, *args):
@@ -31,9 +49,10 @@ with conn() as c:
     if 'kind' not in [r[1] for r in c.execute('PRAGMA table_info(attachments)')]:
         c.execute("ALTER TABLE attachments ADD COLUMN kind TEXT NOT NULL DEFAULT 'product'")
     c.execute('INSERT OR IGNORE INTO settings VALUES(1,?)',(json.dumps(DEFAULT,ensure_ascii=False),))
+    c.execute('CREATE TABLE IF NOT EXISTS imports(id TEXT PRIMARY KEY, created REAL NOT NULL, payload TEXT NOT NULL, result TEXT)')
 
 def now(): return datetime.now().astimezone().isoformat(timespec='microseconds')
-def settings(c): return json.loads(c.execute('SELECT body FROM settings WHERE id=1').fetchone()[0])
+def settings(c): return normalize_settings(json.loads(c.execute('SELECT body FROM settings WHERE id=1').fetchone()[0]))
 def get_item(c, ident):
     r=c.execute('SELECT body FROM items WHERE id=?',(ident,)).fetchone()
     if not r: abort(404, description='상품을 찾을 수 없습니다.')
@@ -58,15 +77,21 @@ def valid_item(raw):
     return obj
 
 def valid_settings(s):
+    s=normalize_settings(s)
     for key in ('categories','methods','buyers'):
         if not isinstance(s.get(key),list) or any(not isinstance(x,str) or not x.strip() for x in s[key]) or len(set(s[key]))!=len(s[key]): raise ValueError('목록 값을 확인해주세요.')
     d=s['display']
     limits={'rowHeight':(40,200),'headerHeight':(32,120),'cellPadding':(8,60),'detailFont':(12,30),'titleFont':(20,48)}
     for k,(low,high) in limits.items():
         if type(d.get(k)) is not int or not low<=d[k]<=high: raise ValueError('화면 크기 설정이 범위를 벗어났습니다.')
-    for key in ('category','name','purchase_price','sale_price'):
+    for key in DISPLAY_LABELS:
         col=d['columns'][key]
         if type(col['font']) is not int or not 12<=col['font']<=30 or type(col['width']) is not int or not 90<=col['width']<=800: raise ValueError('열 설정을 확인해주세요.')
+    for key,allowed in [('visibleColumns',DISPLAY_LABELS),('visibleSummaries',('purchase','sale','net','owned'))]:
+        values=d[key]
+        if not isinstance(values,list) or any(not isinstance(v,str) or v not in allowed for v in values) or len(set(values))!=len(values): raise ValueError('메인 화면 표시 항목을 확인해주세요.')
+    if not d['visibleColumns']: raise ValueError('목록에 표시할 항목을 하나 이상 선택해주세요.')
+    if type(d['showProductThumb']) is not bool: raise ValueError('대표 사진 표시 설정을 확인해주세요.')
     return s
 
 @app.errorhandler(400)
@@ -198,6 +223,169 @@ def export():
     photos.column_dimensions['G'].width=28
     buf=io.BytesIO(); wb.save(buf); buf.seek(0)
     return send_file(buf,as_attachment=True,download_name=f'캠핑용품_전체_{date.today()}.xlsx',mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+@app.get('/api/import/template')
+def import_template():
+    with conn() as c: s=settings(c)
+    wb=Workbook(); ws=wb.active; ws.title='용품 입력'
+    ws.append(list(FIELDS.values()))
+    ws.freeze_panes='C2'; ws.auto_filter.ref='A1:K101'; ws.sheet_view.showGridLines=False
+    widths=[16,32,17,16,16,18,18,15,17,17,44]
+    for col,width in zip('ABCDEFGHIJK',widths): ws.column_dimensions[col].width=width
+    for cell in ws[1]:
+        cell.fill=PatternFill('solid',fgColor='285345'); cell.font=Font(color='FFFFFF',bold=True,size=12)
+        cell.alignment=Alignment(vertical='center'); cell.comment=Comment('필수 입력' if cell.value=='상품명' else '선택 입력. 날짜: YYYY-MM-DD / 금액: 원 단위 정수','CAMP LEDGER')
+    ws.row_dimensions[1].height=32
+    for row in ws.iter_rows(min_row=2,max_row=101,max_col=11):
+        for cell in row:
+            cell.font=Font(color='285345',size=11)
+            cell.fill=PatternFill('solid',fgColor='F3F6EE' if cell.row%2==0 else 'FFFFFF')
+            cell.alignment=Alignment(vertical='center',wrap_text=True)
+            if cell.column in (3,9,10): cell.number_format='yyyy-mm-dd'
+            elif cell.column in (6,7): cell.number_format='#,##0'
+            else: cell.number_format='@'
+        ws.row_dimensions[row[0].row].height=27
+    lists=wb.create_sheet('목록'); lists.sheet_state='hidden'
+    for col,key,named,target in [('A','categories','CampCategories','A'),('B','methods','CampMethods','D'),('C','buyers','CampBuyers','E'),('D',None,'CampStatus','H')]:
+        values=s[key] if key else ['보유','판매','폐기']
+        if not values: continue
+        lists[f'{col}1']=key or 'status'
+        for n,value in enumerate(values,2):
+            lists[f'{col}{n}']=value; lists[f'{col}{n}'].data_type='s'
+        wb.defined_names.add(DefinedName(named,attr_text=f"'목록'!${col}$2:${col}${len(values)+1}"))
+        dv=DataValidation(type='list',formula1='='+named,allow_blank=True)
+        dv.showErrorMessage=not bool(key); dv.errorTitle='상태를 확인해주세요'; dv.error='보유, 판매, 폐기 중에서 선택해주세요.'
+        ws.add_data_validation(dv); dv.add(f'{target}2:{target}20001')
+    for col in ('F','G'):
+        dv=DataValidation(type='whole',operator='between',formula1=0,formula2=999999999999,allow_blank=True)
+        dv.showErrorMessage=True; dv.error='금액은 0 이상의 원 단위 정수로 입력해주세요.'
+        ws.add_data_validation(dv); dv.add(f'{col}2:{col}20001')
+    guide=wb.create_sheet('작성 안내',1); guide.sheet_view.showGridLines=False
+    guide.column_dimensions['A'].width=23; guide.column_dimensions['B'].width=95
+    instructions=[('캠핑용품 엑셀 업로드','작성한 상품은 기존 장부에 새 항목으로 추가됩니다.'),
+        ('작성 위치','용품 입력 시트의 2행부터 상품을 한 줄씩 작성하세요. 제목 행은 유지해주세요.'),
+        ('필수 입력','상품명만 필수입니다. 빈 행은 건너뛰고, 예시는 업로드하지 않습니다.'),
+        ('금액','원 단위 정수. 비워두면 0원으로 추가합니다. 예: 135000'),
+        ('날짜','YYYY-MM-DD 또는 Excel 날짜. 예: 2026-10-13'),
+        ('상태','보유 / 판매 / 폐기. 비워두면 보유로 추가됩니다.'),
+        ('구분·구매방식·구매자','설정에 등록된 목록을 선택할 수 있습니다. 새 값을 직접 입력하면 목록에도 추가됩니다.'),
+        ('업로드 순서','엑셀 업로드 → 파일 선택 → 내용 확인 → 추가하기'),
+        ('입력 오류','오류가 있는 행을 수정한 후 다시 올려주세요. 오류가 있으면 어떤 상품도 추가하지 않습니다.'),
+        ('반복 업로드','같은 파일을 다시 올리면 같은 상품도 새 항목으로 추가됩니다.'),
+        ('사진','이 양식은 상품 정보를 입력합니다. 상품 사진·영수증은 업로드 후 상세 화면에서 첨부하세요.'),
+        ('파일 형식','xlsx · 파일당 20,000개 상품 / 20MB까지'),
+        ('예시','아래 예시는 작성 안내용이며 업로드 대상이 아닙니다.')]
+    for row in instructions: guide.append(row)
+    guide.append(['구분: 의자','상품명: 헬리녹스 체어원 / 구입일자: 2026-10-13 / 구매방식: 온라인 / 구매자: 나 / 구입가격: 135000 / 상태: 보유'])
+    for row in guide:
+        guide.row_dimensions[row[0].row].height=36
+        for cell in row: cell.alignment=Alignment(vertical='center',wrap_text=True); cell.font=Font(color='52654F',size=11)
+        row[0].font=Font(color='285345',bold=True,size=11)
+    for cell in guide[1]: cell.fill=PatternFill('solid',fgColor='285345'); cell.font=Font(color='FFFFFF',bold=True,size=12)
+    buf=io.BytesIO(); wb.save(buf); buf.seek(0)
+    return send_file(buf,as_attachment=True,download_name='캠핑용품_업로드양식.xlsx',mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+def import_cell(cell,key):
+    value=cell.value
+    if value is None or isinstance(value,str) and not value.strip():
+        return 0 if key in ('purchase_price','sale_price') else 'owned' if key=='status' else ''
+    if cell.data_type in ('f','e'): raise ValueError('수식이나 Excel 오류 대신 값을 입력해주세요.')
+    if key in ('purchase_price','sale_price'):
+        if isinstance(value,bool): raise ValueError('금액은 0 이상의 정수로 입력해주세요.')
+        if isinstance(value,str): value=value.strip().replace(',','').replace('₩','').removesuffix('원').strip()
+        if isinstance(value,float):
+            if not math.isfinite(value) or not value.is_integer(): raise ValueError('금액에 소수를 사용할 수 없습니다.')
+            value=int(value)
+        if not str(value).isdigit() or int(value)>999999999999: raise ValueError('금액은 0~999,999,999,999원의 정수로 입력해주세요.')
+        return int(value)
+    if key in ('purchase_date','sale_date','disposal_date'):
+        if isinstance(value,datetime): return value.date().isoformat()
+        if isinstance(value,date): return value.isoformat()
+        if isinstance(value,str):
+            text=value.strip()
+            for fmt in ('%Y-%m-%d','%Y/%m/%d','%Y.%m.%d','%Y%m%d'):
+                try: return datetime.strptime(text,fmt).date().isoformat()
+                except ValueError: pass
+        raise ValueError('날짜는 YYYY-MM-DD 또는 Excel 날짜로 입력해주세요.')
+    if key=='status':
+        aliases={'보유':'owned','판매':'sold','판매완료':'sold','폐기':'disposed',**{k:k for k in STATUSES}}
+        status=aliases.get(str(value).strip().replace(' ',''))
+        if not status: raise ValueError('상태는 보유, 판매, 폐기 중에서 입력해주세요.')
+        return status
+    if isinstance(value,(str,int,float)): return str(value).strip()
+    raise ValueError('텍스트로 입력해주세요.')
+
+@app.post('/api/import/preview')
+def preview_import():
+    f=request.files.get('excel')
+    if not f or not (f.filename or '').lower().endswith('.xlsx'): raise ValueError('다운로드한 .xlsx 양식을 선택해주세요.')
+    content=f.read(20*1024*1024+1)
+    if len(content)>20*1024*1024: raise ValueError('엑셀 파일은 20MB 이하로 올려주세요.')
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as z:
+            if sum(x.file_size for x in z.infolist())>120*1024*1024: raise ValueError('엑셀 파일이 너무 큽니다. 나눠서 업로드해주세요.')
+        wb=load_workbook(io.BytesIO(content),read_only=True,data_only=False,keep_links=False)
+    except (zipfile.BadZipFile,InvalidFileException,KeyError): raise ValueError('읽을 수 없는 엑셀 파일입니다. .xlsx 파일을 확인해주세요.')
+    try:
+        ws=next((wb[name] for name in ('용품 입력','전체 상품') if name in wb.sheetnames),wb.worksheets[0])
+        if (ws.max_column or 0)>100 or (ws.max_row or 0)>20001: raise ValueError('파일당 최대 20,000행입니다. 입력 범위를 확인해주세요.')
+        first=next(ws.iter_rows(min_row=1,max_row=1),())
+        mapping={}; labels={v:k for k,v in FIELDS.items()}
+        for n,cell in enumerate(first):
+            header=str(cell.value or '').strip().removesuffix('*').strip()
+            if header not in labels: continue
+            key=labels[header]
+            if key in mapping: raise ValueError(f'{header} 열이 중복되었습니다.')
+            mapping[key]=n
+        if 'name' not in mapping: raise ValueError('첫 행에 상품명 열이 필요합니다. 업로드 양식을 내려받아 작성해주세요.')
+        rows=[]; errors=[]
+        for number,cells in enumerate(ws.iter_rows(min_row=2),2):
+            if not any(cells[n].value is not None and str(cells[n].value).strip() for n in mapping.values()): continue
+            obj={key:0 if key in ('purchase_price','sale_price') else 'owned' if key=='status' else '' for key in FIELDS}
+            row_errors=[]
+            for key,n in mapping.items():
+                try: obj[key]=import_cell(cells[n],key)
+                except ValueError as exc: row_errors.append({'row':number,'field':FIELDS[key],'message':str(exc)})
+            if not obj['name']: row_errors.append({'row':number,'field':'상품명','message':'상품명을 입력해주세요.'})
+            errors.extend(row_errors)
+            if not row_errors: rows.append({'row':number,'item':valid_item(obj)})
+        if not rows and not errors: raise ValueError('추가할 상품이 없습니다. 양식의 2행부터 내용을 작성해주세요.')
+        result={'ok':not bool(errors),'count':len(rows),'errors':errors[:100],'error_count':len(errors),'preview':rows[:50],
+                'purchase_total':sum(r['item']['purchase_price'] for r in rows),
+                'sale_total':sum(r['item']['sale_price'] for r in rows if r['item']['status']=='sold')}
+        if not errors:
+            token=str(uuid.uuid4())
+            with conn() as c:
+                c.execute('DELETE FROM imports WHERE created<?',(time.time()-3600,))
+                c.execute('INSERT INTO imports VALUES(?,?,?,NULL)',(token,time.time(),json.dumps({'rows':rows,'filename':Path(f.filename).name},ensure_ascii=False)))
+            result['token']=token
+        return jsonify(result)
+    finally: wb.close()
+
+@app.post('/api/import/commit')
+def commit_import():
+    token=(request.get_json() or {}).get('token')
+    if not isinstance(token,str): raise ValueError('업로드 파일을 먼저 확인해주세요.')
+    with conn() as c:
+        c.execute('BEGIN IMMEDIATE')
+        batch=c.execute('SELECT * FROM imports WHERE id=?',(token,)).fetchone()
+        if not batch or batch['created']<time.time()-3600: raise ValueError('미리보기가 만료되었습니다. 엑셀 파일을 다시 선택해주세요.')
+        if batch['result']: return jsonify(json.loads(batch['result']))
+        payload=json.loads(batch['payload']); ids=[]; stamp=now(); s=settings(c)
+        for row in payload['rows']:
+            it=valid_item(row['item']); ident=str(uuid.uuid4())
+            it.update(id=ident,created_at=stamp,updated_at=stamp,history=[{'at':stamp,'changes':[{'field':'엑셀 등록','before':'','after':f"{payload['filename']} · {row['row']}행"}]}])
+            # Always insert under a new ID; existing records and attachments are untouched.
+            c.execute('INSERT INTO items VALUES(?,?)',(ident,json.dumps(it,ensure_ascii=False)))
+            ids.append(ident)
+            for field,key in [('category','categories'),('method','methods'),('buyer','buyers')]:
+                if it[field] and it[field] not in s[key]: s[key].append(it[field])
+        c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(s,ensure_ascii=False),))
+        result={'ok':True,'count':len(ids),'ids':ids}
+        c.execute('UPDATE imports SET result=?,payload=? WHERE id=?',(json.dumps(result),'{}',token))
+    return jsonify(result)
+
 @app.get('/api/backup')
 def backup():
     buf=io.BytesIO()
