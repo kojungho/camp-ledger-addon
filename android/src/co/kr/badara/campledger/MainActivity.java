@@ -35,7 +35,7 @@ import javax.crypto.spec.GCMParameterSpec;
 
 public class MainActivity extends Activity {
     private static final String BASE="https://ha.badara.co.kr/camp-ledger/";
-    
+
     private static final String ALIAS="camp-ledger-device-key";
     private WebView web;
     private ValueCallback<Uri[]> chooser;
