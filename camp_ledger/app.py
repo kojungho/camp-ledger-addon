@@ -12,7 +12,7 @@ app.config.update(MAX_FORM_PARTS=None, MAX_FORM_MEMORY_SIZE=None)
 DATA = Path(os.environ.get('CAMP_DATA', '/data/camp-ledger'))
 DATA.mkdir(parents=True, exist_ok=True)
 DB = DATA / 'ledger.sqlite3'
-DEFAULT = {'categories':['부품','텐트','의자','테이블','소모품','기타'], 'methods':['온라인','오프라인'], 'buyers':['나','가족'], 'display': {'rowHeight':72,'headerHeight':48,'cellPadding':20,'detailFont':15,'titleFont':32,'columns':{'category':{'font':14,'width':160},'name':{'font':16,'width':440},'purchase_price':{'font':16,'width':190},'sale_price':{'font':16,'width':190}}}}
+DEFAULT = {'categories':['부품','텐트','의자','테이블','소모품','기타'], 'methods':['온라인','오프라인'], 'buyers':['나','가족'], 'display': {'rowHeight':72,'headerHeight':48,'cellPadding':20,'detailFont':15,'titleFont':32,'columns':{'category':{'font':14,'width':130},'name':{'font':16,'width':360},'purchase_price':{'font':16,'width':165},'sale_price':{'font':16,'width':165}}}}
 FIELDS = {'category':'구분','name':'상품명','purchase_date':'구입일자','method':'구매방식','buyer':'구매자','purchase_price':'구입가격','sale_price':'판매가격','status':'상태','sale_date':'판매일자','disposal_date':'폐기일자','notes':'메모'}
 STATUSES = {'owned':'보유','sold':'판매','disposed':'폐기'}
 

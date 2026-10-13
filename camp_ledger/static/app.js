@@ -4,7 +4,7 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const money=n=>'₩'+Number(n||0).toLocaleString('ko-KR');
 const statusName={owned:'보유',sold:'판매',disposed:'폐기'};
 const titles={all:['나의 캠핑용품','함께한 장비와 다음 여행을 위한 기록.','전체 용품'],owned:['함께하는 용품','다음 캠핑을 기다리는 나의 장비.','보유 용품'],sold:['판매한 용품','새로운 캠퍼에게 이어진 장비의 기록.','판매 용품'],disposed:['정리한 용품','오래 함께했던 장비의 마지막 기록.','폐기 용품']};
-const defaultDisplay={rowHeight:72,headerHeight:48,cellPadding:20,detailFont:15,titleFont:32,columns:{category:{font:14,width:160},name:{font:16,width:440},purchase_price:{font:16,width:190},sale_price:{font:16,width:190}}};
+const defaultDisplay={rowHeight:72,headerHeight:48,cellPadding:20,detailFont:15,titleFont:32,columns:{category:{font:14,width:130},name:{font:16,width:360},purchase_price:{font:16,width:165},sale_price:{font:16,width:165}}};
 let state={items:[],settings:null}, view='all', selected=new Set(), current=null, files=[], deleted=new Set(), draftSettings, dirty=false, toastTimer;
 const itemForm=$('#item-form');
 async function api(path,options={}){const res=await fetch(path,{...options,headers:{'X-Camp-Request':'1',...options.headers}});let data;try{data=await res.json()}catch{throw Error('서버 응답을 확인해주세요.')}if(!res.ok)throw Error(data.error||'저장하지 못했습니다.');return data;}
