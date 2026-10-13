@@ -27,7 +27,7 @@ FIELDS.update(purchase_type='구매유형')
 PRICE_FIELDS=('purchase_price','sale_price','shared_purchase_total')
 QTY_FIELDS=('purchase_qty','current_qty','sold_qty')
 STATUSES = {'owned':'보유','sold':'판매','disposed':'폐기'}
-DISPLAY_LABELS = {**FIELDS, 'photos':'사진','disposed_qty':'폐기·소진수량','avg_unit_price':'평균단가','current_value':'현재금액','deducted_value':'차감금액'}
+DISPLAY_LABELS = {**FIELDS, 'photos':'사진','disposed_qty':'폐기·소진수량','avg_unit_price':'평균단가','current_value':'현재금액','deducted_value':'차감금액','owned_status':'보유 여부','sold_status':'판매 완료','disposed_status':'폐기·소진 여부','product_photo_count':'상품 사진 수','receipt_photo_count':'영수증 사진 수','created_at':'등록일시','updated_at':'수정일시'}
 for key in DISPLAY_LABELS:
     DEFAULT['display']['columns'].setdefault(key, {'font':14,'width':320 if key=='notes' else 160})
 DEFAULT['display'].update(visibleColumns=['category','name','purchase_price','sale_price'],
@@ -38,6 +38,8 @@ def normalize_settings(s):
     d=s.setdefault('display',{})
     for key in ('visibleColumns','visibleSummaries','showProductThumb'):
         if key not in d: d[key]=list(DEFAULT['display'][key]) if isinstance(DEFAULT['display'][key],list) else DEFAULT['display'][key]
+    if 'columnOrder' in d:
+        d['columnOrder']=[k for k in d['columnOrder'] if k in DISPLAY_LABELS]+[k for k in DISPLAY_LABELS if k not in d['columnOrder']]
     columns=d.setdefault('columns',{})
     for key,value in DEFAULT['display']['columns'].items():
         if key not in columns: columns[key]=dict(value)
@@ -70,6 +72,7 @@ def get_item(c, ident):
     if not r: abort(404, description='상품을 찾을 수 없습니다.')
     item=stock_view(json.loads(r[0]))
     item['attachments']=[dict(x) for x in c.execute('SELECT id,name,mime,kind,length(data) AS size FROM attachments WHERE item_id=? ORDER BY rowid',(ident,))]
+    item['product_photo_count']=sum(a['kind']=='product' for a in item['attachments']);item['receipt_photo_count']=sum(a['kind']=='receipt' for a in item['attachments'])
     return item
 
 def valid_item(raw):
@@ -114,6 +117,9 @@ def stock_view(item):
     item.setdefault('sold_qty',item['purchase_qty'] if item['status']=='sold' else 0)
     item.setdefault('cost_unconfirmed',False);item.setdefault('shared_purchase_total',0)
     item.setdefault('purchase_type','미기재'); item.setdefault('consumptions',[])
+    item['owned_status']='보유' if item['current_qty'] else '미보유'
+    item['sold_status']='판매 완료' if item['sold_qty']==item['purchase_qty'] else '일부 판매' if item['sold_qty'] else '미판매'
+    item['disposed_status']='폐기·소진' if item['purchase_qty']>item['current_qty']+item['sold_qty'] else '없음'
     item['disposed_qty']=item['purchase_qty']-item['current_qty']-item['sold_qty']
     item['avg_unit_price']=float((Decimal(item['purchase_price'])/item['purchase_qty']).quantize(Decimal('0.01'),rounding=ROUND_HALF_UP))
     item['current_value']=int((Decimal(item['purchase_price'])*item['current_qty']/item['purchase_qty']).quantize(Decimal('1'),rounding=ROUND_HALF_UP))
