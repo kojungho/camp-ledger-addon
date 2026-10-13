@@ -28,6 +28,8 @@ def conn():
     return c
 with conn() as c:
     c.executescript('CREATE TABLE IF NOT EXISTS items(id TEXT PRIMARY KEY, body TEXT NOT NULL); CREATE TABLE IF NOT EXISTS attachments(id TEXT PRIMARY KEY,item_id TEXT NOT NULL REFERENCES items(id) ON DELETE CASCADE,name TEXT NOT NULL,mime TEXT NOT NULL,data BLOB NOT NULL); CREATE TABLE IF NOT EXISTS settings(id INTEGER PRIMARY KEY,body TEXT NOT NULL);')
+    if 'kind' not in [r[1] for r in c.execute('PRAGMA table_info(attachments)')]:
+        c.execute("ALTER TABLE attachments ADD COLUMN kind TEXT NOT NULL DEFAULT 'product'")
     c.execute('INSERT OR IGNORE INTO settings VALUES(1,?)',(json.dumps(DEFAULT,ensure_ascii=False),))
 
 def now(): return datetime.now().astimezone().isoformat(timespec='microseconds')
@@ -36,7 +38,7 @@ def get_item(c, ident):
     r=c.execute('SELECT body FROM items WHERE id=?',(ident,)).fetchone()
     if not r: abort(404, description='상품을 찾을 수 없습니다.')
     item=json.loads(r[0])
-    item['attachments']=[dict(x) for x in c.execute('SELECT id,name,mime,length(data) AS size FROM attachments WHERE item_id=? ORDER BY rowid',(ident,))]
+    item['attachments']=[dict(x) for x in c.execute('SELECT id,name,mime,kind,length(data) AS size FROM attachments WHERE item_id=? ORDER BY rowid',(ident,))]
     return item
 
 def valid_item(raw):
@@ -109,7 +111,11 @@ def save(ident=None):
     delete_ids=json.loads(request.form.get('delete_attachments','[]'))
     if not isinstance(delete_ids,list) or any(not isinstance(x,str) for x in delete_ids): raise ValueError('첨부 목록을 확인해주세요.')
     uploads=[]
-    for f in request.files.getlist('photos'):
+    incoming=request.files.getlist('photos')
+    kinds=json.loads(request.form.get('photo_kinds','[]'))
+    if not kinds: kinds=['product']*len(incoming)
+    if len(kinds)!=len(incoming) or any(k not in ('product','receipt') for k in kinds): raise ValueError('사진 종류를 확인해주세요.')
+    for f,kind in zip(incoming,kinds):
         data=f.read()
         try:
             with Image.open(io.BytesIO(data)) as im:
@@ -117,7 +123,7 @@ def save(ident=None):
                 im.verify()
             mime={'JPEG':'image/jpeg','PNG':'image/png','WEBP':'image/webp','GIF':'image/gif'}[fmt]
         except Exception: raise ValueError('사진은 JPG, PNG, WebP, GIF 형식으로 첨부해주세요.')
-        uploads.append((str(uuid.uuid4()),Path(f.filename or '사진').name,mime,data))
+        uploads.append((str(uuid.uuid4()),Path(f.filename or '사진').name,mime,data,kind))
     with conn() as c:
         c.execute('BEGIN IMMEDIATE')
         old=get_item(c,ident) if ident else None
@@ -134,7 +140,7 @@ def save(ident=None):
         obj.update(id=ident,created_at=old['created_at'] if old else stamp,updated_at=stamp,history=history)
         c.execute('INSERT INTO items VALUES(?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body',(ident,json.dumps(obj,ensure_ascii=False)))
         for aid in delete_ids: c.execute('DELETE FROM attachments WHERE id=? AND item_id=?',(aid,ident))
-        for aid,name,mime,data in uploads: c.execute('INSERT INTO attachments VALUES(?,?,?,?,?)',(aid,ident,name,mime,data))
+        for aid,name,mime,data,kind in uploads: c.execute('INSERT INTO attachments(id,item_id,name,mime,data,kind) VALUES(?,?,?,?,?,?)',(aid,ident,name,mime,data,kind))
     return jsonify(ok=True,id=ident)
 @app.post('/api/delete')
 def delete():
@@ -157,7 +163,7 @@ def export():
     wb=Workbook(); ws=wb.active; ws.title='전체 상품'; hist=wb.create_sheet('변경 이력'); photos=wb.create_sheet('첨부 사진'); prefs=wb.create_sheet('설정'); summary=wb.create_sheet('금액 집계')
     ws.append(['ID']+list(FIELDS.values())+['사진 수','사진 파일명','등록 시각','수정 시각'])
     hist.append(['상품 ID','상품명','변경 시각','항목','변경 전','변경 후'])
-    photos.append(['상품 ID','상품명','첨부 ID','파일명','형식','사진'])
+    photos.append(['상품 ID','상품명','첨부 ID','파일명','형식','종류','사진'])
     with conn() as c:
         c.execute('BEGIN')
         items=[get_item(c,r[0]) for r in c.execute('SELECT id FROM items ORDER BY rowid').fetchall()]
@@ -167,10 +173,10 @@ def export():
             for event in it['history']:
                 for ch in event['changes']: hist.append([excel_value(v) for v in [it['id'],it['name'],event['at'],ch['field'],ch['before'],ch['after']]])
             for a in c.execute('SELECT * FROM attachments WHERE item_id=?',(it['id'],)):
-                photos.append([excel_value(v) for v in [it['id'],it['name'],a['id'],a['name'],a['mime']]])
+                photos.append([excel_value(v) for v in [it['id'],it['name'],a['id'],a['name'],a['mime'],'영수증' if a['kind']=='receipt' else '상품 사진']])
                 with Image.open(io.BytesIO(a['data'])) as im:
                     im.thumbnail((180,130)); buf=io.BytesIO(); im.convert('RGB').save(buf,'PNG'); buf.seek(0)
-                xl=XLImage(buf); photos.add_image(xl,f'F{photos.max_row}'); photos.row_dimensions[photos.max_row].height=105
+                xl=XLImage(buf); photos.add_image(xl,f'G{photos.max_row}'); photos.row_dimensions[photos.max_row].height=105
         prefs.append(['항목','값']); s=settings(c)
         for k in ('categories','methods','buyers'): prefs.append([{'categories':'구분','methods':'구매방식','buyers':'구매자'}[k],json.dumps(s[k],ensure_ascii=False)])
         prefs.append(['화면 설정',json.dumps(s['display'],ensure_ascii=False)])
@@ -189,7 +195,7 @@ def export():
             for cell in row: cell.alignment=Alignment(vertical='center',wrap_text=True)
     for n in (6,7):
         for row in ws.iter_rows(min_row=2): row[n].number_format='#,##0"원"'
-    photos.column_dimensions['F'].width=28
+    photos.column_dimensions['G'].width=28
     buf=io.BytesIO(); wb.save(buf); buf.seek(0)
     return send_file(buf,as_attachment=True,download_name=f'캠핑용품_전체_{date.today()}.xlsx',mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 @app.get('/api/backup')
@@ -230,14 +236,16 @@ def restore():
                 with Image.open(io.BytesIO(b)) as im:
                     mime={'JPEG':'image/jpeg','PNG':'image/png','WEBP':'image/webp','GIF':'image/gif'}.get(im.format); im.verify()
                 if not mime: raise ValueError('지원하지 않는 사진 형식입니다.')
-                attachments.append((aid,ident,Path(a['name']).name,mime,b))
+                kind=a.get('kind','product')
+                if kind not in ('product','receipt'): raise ValueError('사진 종류를 확인해주세요.')
+                attachments.append((aid,ident,Path(a['name']).name,mime,b,kind))
             rows.append((it,attachments))
     with conn() as c:
         c.execute('DELETE FROM items')
         c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(s,ensure_ascii=False),))
         for it,attachments in rows:
             c.execute('INSERT INTO items VALUES(?,?)',(it['id'],json.dumps(it,ensure_ascii=False)))
-            c.executemany('INSERT INTO attachments VALUES(?,?,?,?,?)',attachments)
+            c.executemany('INSERT INTO attachments(id,item_id,name,mime,data,kind) VALUES(?,?,?,?,?,?)',attachments)
     return jsonify(ok=True)
 
 if __name__=='__main__':

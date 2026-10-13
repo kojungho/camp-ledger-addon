@@ -22,12 +22,13 @@ class LedgerTest(unittest.TestCase):
         return dict(category='텐트',name='캠핑 텐트',purchase_date='2026-10-01',method='온라인',buyer='나',purchase_price=300000,sale_price=150000,status='owned',sale_date='',disposal_date='',notes='영수증 보관',**extra)
     def save(self,item,ident=None,photos=0,deletes=None):
         data={'item':json.dumps(item),'delete_attachments':json.dumps(deletes or [])}
+        if photos:data['photo_kinds']=json.dumps(['product' if n%2==0 else 'receipt' for n in range(photos)])
         if photos:data['photos']=[(self.image(),f'사진{n}.png') for n in range(photos)]
         return self.client.open('/api/items'+('/'+ident if ident else ''),method='PUT' if ident else 'POST',data=data,headers=self.headers)
     def state(self):return self.client.get('/api/state').get_json()
     def test_full_lifecycle_and_export(self):
         r=self.save(self.item(),photos=12);self.assertEqual(r.status_code,200)
-        first=self.state()['items'][0];self.assertEqual(len(first['attachments']),12)
+        first=self.state()['items'][0];self.assertEqual(len(first['attachments']),12);self.assertEqual(sum(a['kind']=='receipt' for a in first['attachments']),6)
         changed={**first,'status':'sold','sale_date':'2026-10-13','sale_price':180000,'name':'=SUM(1,2)'}
         r=self.save(changed,first['id'],photos=1,deletes=[first['attachments'][0]['id']]);self.assertEqual(r.status_code,200)
         sold=self.state()['items'][0];self.assertEqual(len(sold['attachments']),12);self.assertEqual(len(sold['history']),2)
