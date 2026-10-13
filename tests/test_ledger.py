@@ -1,4 +1,4 @@
-import importlib.util, io, json, os, tempfile, unittest, zipfile
+import importlib.util, io, json, os, tempfile, unittest, zipfile, sys
 from pathlib import Path
 from datetime import datetime
 from PIL import Image
@@ -7,6 +7,7 @@ from openpyxl import load_workbook
 sandbox=tempfile.TemporaryDirectory()
 os.environ['CAMP_DATA']=sandbox.name
 os.environ.pop('HA_INGRESS',None)
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'camp_ledger'))
 spec=importlib.util.spec_from_file_location('ledger',Path(__file__).resolve().parents[1]/'camp_ledger/app.py')
 ledger=importlib.util.module_from_spec(spec);spec.loader.exec_module(ledger)
 
@@ -17,6 +18,7 @@ class LedgerTest(unittest.TestCase):
         with ledger.conn() as c:
             c.execute('DELETE FROM items')
             c.execute('DELETE FROM imports')
+            c.execute('DELETE FROM devices')
             c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(ledger.DEFAULT),))
     def image(self):
         b=io.BytesIO();Image.new('RGB',(32,24),'green').save(b,'PNG');b.seek(0);return b
@@ -70,7 +72,7 @@ class LedgerTest(unittest.TestCase):
         os.environ['HA_INGRESS']='1'
         try:
             self.assertEqual(self.client.get('/api/state').status_code,403)
-            self.assertEqual(self.client.get('/api/state',environ_base={'REMOTE_ADDR':'172.30.32.2'}).status_code,200)
+            self.assertEqual(self.client.get('/api/state',environ_overrides={'REMOTE_ADDR':'172.30.32.2','SERVER_PORT':'8099'}).status_code,200)
         finally:os.environ.pop('HA_INGRESS',None)
 
     def excel_upload(self,rows=None,headers=None):
@@ -188,5 +190,37 @@ class LedgerTest(unittest.TestCase):
         self.assertTrue(all(i['avg_unit_price'] is None for i in state['items']))
         self.assertTrue(all(i['current_value'] is None for i in state['items']))
         chair=next(i for i in state['items'] if i['name']=='공동구매 의자');self.assertEqual(chair['sold_qty'],4)
+
+    def test_device_access_scope_and_revocation(self):
+        self.save(self.item())
+        os.environ['HA_INGRESS']='1'
+        owner={'REMOTE_ADDR':'172.30.32.2','SERVER_PORT':'8099'}
+        outside={'REMOTE_ADDR':'172.30.32.2','SERVER_PORT':'8098','camp.entrypoint':'external'}
+        external=ledger.app.test_client(use_cookies=False)
+        try:
+            self.assertEqual(external.get('/api/state',environ_overrides=outside).status_code,401)
+            self.assertEqual(external.get('/api/state',headers={'Host':'ha.badara.co.kr:8099'},environ_overrides={**outside,'SERVER_PORT':'8099'}).status_code,401)
+            page=external.get('/',environ_overrides=outside)
+            self.assertEqual(page.status_code,200);self.assertNotIn('캠핑 텐트',page.data.decode());page.close()
+            cfg=self.client.put('/api/mobile/config',json={'enabled':True,'external_url':'https://ha.badara.co.kr/camp-ledger/'},headers=self.headers,environ_overrides=owner)
+            self.assertEqual(cfg.status_code,200)
+            pair=self.client.post('/api/mobile/devices',json={'name':'테스트 휴대폰'},headers=self.headers,environ_overrides=owner).get_json()
+            self.assertGreater(len(pair['token']),32)
+            with ledger.conn() as c:self.assertNotEqual(c.execute('SELECT token_hash FROM devices').fetchone()[0],pair['token'])
+            cookie={**self.headers,'Cookie':'camp_device='+pair['token']}
+            self.assertEqual(external.get('/api/state',headers=cookie,environ_overrides=outside).status_code,200)
+            self.assertFalse(external.get('/api/state',headers=cookie,environ_overrides=outside).get_json()['mobile']['admin'])
+            self.assertEqual(external.post('/api/mobile/devices',json={'name':'forbidden'},headers=cookie,environ_overrides=outside).status_code,403)
+            self.assertEqual(external.put('/api/mobile/config',json={'enabled':False,'external_url':''},headers=cookie,environ_overrides=outside).status_code,403)
+            s=external.get('/api/state',headers=cookie,environ_overrides=outside).get_json()['settings'];s['mobile']={'enabled':False,'external_url':'https://wrong.example/'}
+            self.assertEqual(external.put('/api/settings',json=s,headers=cookie,environ_overrides=outside).status_code,200)
+            self.assertTrue(self.client.get('/api/mobile/status',environ_overrides=owner).get_json()['enabled'])
+            login=external.post('/api/mobile/session',json={'key':pair['token']},headers=self.headers,environ_overrides=outside)
+            self.assertEqual(login.status_code,200);cookie_header=login.headers['Set-Cookie']
+            self.assertIn('Secure',cookie_header);self.assertIn('HttpOnly',cookie_header);self.assertIn('Path=/camp-ledger/',cookie_header)
+            self.assertEqual(self.client.post('/api/mobile/devices/'+pair['id']+'/revoke',json={},headers=self.headers,environ_overrides=owner).status_code,200)
+            self.assertEqual(external.get('/api/state',headers=cookie,environ_overrides=outside).status_code,401)
+            self.assertEqual(external.get('/api/state',headers=cookie,environ_overrides=owner).status_code,200)
+        finally:os.environ.pop('HA_INGRESS',None)
 
 if __name__=='__main__':unittest.main()

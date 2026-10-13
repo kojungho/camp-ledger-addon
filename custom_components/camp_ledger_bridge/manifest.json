@@ -1,0 +1,1 @@
+{"domain":"camp_ledger_bridge","name":"캠핑 장부 앱 연결","version":"1.0.0","dependencies":["http"],"codeowners":[],"documentation":"https://github.com/kojungho/camp-ledger-addon","iot_class":"local_push"}

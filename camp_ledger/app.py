@@ -12,8 +12,9 @@ from openpyxl.comments import Comment
 from openpyxl.utils.exceptions import InvalidFileException
 from openpyxl.utils import get_column_letter
 from PIL import Image
+from mobile_access import install_mobile, channel_app
 
-app = Flask(__name__, static_folder='static')
+app = Flask(__name__, static_folder=str(Path(__file__).with_name('static')))
 app.config.update(MAX_FORM_PARTS=None, MAX_FORM_MEMORY_SIZE=None)
 DATA = Path(os.environ.get('CAMP_DATA', '/data/camp-ledger'))
 DATA.mkdir(parents=True, exist_ok=True)
@@ -149,7 +150,11 @@ def valid_settings(s):
     if type(d['showProductThumb']) is not bool: raise ValueError('대표 사진 표시 설정을 확인해주세요.')
     return s
 
+mobile=install_mobile(app,conn,settings,DATA)
+
 @app.errorhandler(400)
+@app.errorhandler(401)
+@app.errorhandler(403)
 @app.errorhandler(404)
 @app.errorhandler(413)
 def http_error(e): return jsonify(error=e.description),e.code
@@ -160,8 +165,8 @@ def value_error(e): return jsonify(error=str(e) or '파일 또는 입력값을 �
 
 @app.before_request
 def protect():
-    # Production port is only exposed through the HA ingress network.
-    if os.environ.get('HA_INGRESS')=='1' and request.remote_addr != '172.30.32.2': abort(403)
+    response=mobile['guard']()
+    if response is not None: return response
     if request.method in ('POST','PUT','DELETE') and request.headers.get('X-Camp-Request')!='1': abort(400,description='요청을 확인해주세요.')
 
 @app.after_request
@@ -177,11 +182,13 @@ def index(): return app.send_static_file('index.html')
 def state():
     with conn() as c:
         c.execute('BEGIN')
-        return jsonify(settings=settings(c),items=[get_item(c,x[0]) for x in c.execute('SELECT id FROM items ORDER BY rowid DESC').fetchall()])
+        return jsonify(settings=settings(c),items=[get_item(c,x[0]) for x in c.execute('SELECT id FROM items ORDER BY rowid DESC').fetchall()],mobile=mobile['status']())
 @app.put('/api/settings')
 def update_settings():
     s=valid_settings(request.get_json())
-    with conn() as c: c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(s,ensure_ascii=False),))
+    with conn() as c:
+        s['mobile']=settings(c).get('mobile',{})
+        c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(s,ensure_ascii=False),))
     return jsonify(ok=True)
 @app.post('/api/items')
 @app.put('/api/items/<ident>')
@@ -536,6 +543,7 @@ def restore():
                 attachments.append((aid,ident,Path(a['name']).name,mime,b,kind))
             rows.append((it,attachments))
     with conn() as c:
+        s['mobile']=settings(c).get('mobile',{})
         c.execute('DELETE FROM items')
         c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(s,ensure_ascii=False),))
         for it,attachments in rows:
@@ -545,4 +553,6 @@ def restore():
 
 if __name__=='__main__':
     from waitress import serve
-    serve(app,host=os.environ.get('CAMP_HOST','0.0.0.0'),port=int(os.environ.get('PORT','8099')),threads=4,max_request_body_size=2**40)
+    import threading
+    threading.Thread(target=lambda:serve(channel_app(app,'external'),host='0.0.0.0',port=8098,threads=4,max_request_body_size=2**40),daemon=True).start()
+    serve(channel_app(app,'ingress'),host=os.environ.get('CAMP_HOST','0.0.0.0'),port=int(os.environ.get('PORT','8099')),threads=4,max_request_body_size=2**40)
