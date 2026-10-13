@@ -1,0 +1,79 @@
+name: Test and publish HA images
+on:
+  push:
+    branches: [main]
+    paths: [camp_ledger/**, tests/**, .github/workflows/publish.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: camp-ledger-publish
+  cancel-in-progress: false
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - run: pip install -r camp_ledger/requirements.txt
+      - run: python -m unittest discover -s tests -v
+      - run: node --check camp_ledger/static/app.js
+  build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - arch: aarch64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+      - id: version
+        run: echo "value=$(sed -n 's/^version: "\(.*\)"/\1/p' camp_ledger/config.yaml)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v7
+        with:
+          context: ./camp_ledger
+          platforms: ${{ matrix.platform }}
+          push: true
+          tags: ghcr.io/kojungho/camp-ledger:${{ steps.version.outputs.value }}-${{ matrix.arch }}
+          build-args: |
+            BUILD_VERSION=${{ steps.version.outputs.value }}
+            BUILD_ARCH=${{ matrix.arch }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/kojungho/camp-ledger-addon
+            org.opencontainers.image.title=Camp Ledger
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+  manifest:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - id: version
+        run: echo "value=$(sed -n 's/^version: "\(.*\)"/\1/p' camp_ledger/config.yaml)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish multi-architecture image
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          docker buildx imagetools create --tag "ghcr.io/kojungho/camp-ledger:$VERSION" "ghcr.io/kojungho/camp-ledger:$VERSION-amd64" "ghcr.io/kojungho/camp-ledger:$VERSION-aarch64"
+          docker buildx imagetools inspect "ghcr.io/kojungho/camp-ledger:$VERSION"
