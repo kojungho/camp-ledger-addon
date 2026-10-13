@@ -115,7 +115,7 @@ def stock_view(item):
         for key in ('avg_unit_price','current_value','deducted_value'): item[key]=None
     item.setdefault('purchases',[{'id':str(uuid.uuid5(uuid.NAMESPACE_URL,item['id']+'/initial')), 'date':item['purchase_date'],'quantity':item['purchase_qty'],'cost':item['purchase_price'],'notes':'최초 구매'}])
     for purchase in item['purchases']: purchase.setdefault('purchase_type',item['purchase_type'])
-    types={p['purchase_type'] for p in item['purchases'] if p['purchase_type']!='미기재'}
+    types={p['purchase_type'] for p in item['purchases']}
     if len(types)>1: item['purchase_type']='혼합'
     elif types: item['purchase_type']=next(iter(types))
     return item
