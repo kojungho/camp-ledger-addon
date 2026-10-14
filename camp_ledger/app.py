@@ -245,7 +245,7 @@ def valid_settings(s):
     for key,(low,high) in mobile_limits.items():
         if type(mobile[key]) is not int or not low<=mobile[key]<=high:raise ValueError('모바일 화면 설정 범위를 확인해주세요.')
     if not isinstance(mobile['columns'],dict) or any(k not in DISPLAY_LABELS for k in mobile['columns']):raise ValueError('모바일 항목 설정을 확인해주세요.')
-    column_limits={**mobile_limits,'width':(40,600),**{k:(0,60) for k in ('spaceTop','spaceBottom','spaceLeft','spaceRight')},'fontWeight':(100,900),'padding':(0,60),'verticalPadding':(0,60)}
+    column_limits={**mobile_limits,'width':(20,600),**{k:(0,60) for k in ('spaceTop','spaceBottom','spaceLeft','spaceRight')},'fontWeight':(100,900),'padding':(0,60),'verticalPadding':(0,60)}
     for col in mobile['columns'].values():
         if not isinstance(col,dict):raise ValueError('모바일 항목 설정을 확인해주세요.')
         for key,value in col.items():
