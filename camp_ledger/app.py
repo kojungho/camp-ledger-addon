@@ -1,4 +1,4 @@
-import io, json, os, sqlite3, uuid, zipfile, time, math
+import io, json, os, re, sqlite3, uuid, zipfile, time, math
 from datetime import date, datetime
 from urllib.parse import urlsplit
 from decimal import Decimal, ROUND_HALF_UP
@@ -13,6 +13,7 @@ from openpyxl.comments import Comment
 from openpyxl.utils.exceptions import InvalidFileException
 from openpyxl.utils import get_column_letter
 from PIL import Image
+from live_sync import LiveSync
 from exchange import get_rate, dollar_amount, won
 from mobile_access import install_mobile, channel_app
 
@@ -260,6 +261,8 @@ def valid_settings(s):
     if type(d['showProductThumb']) is not bool: raise ValueError('대표 사진 표시 설정을 확인해주세요.')
     return s
 
+RELEASE=os.environ.get('CAMP_VERSION') or re.search(r'version:\s*"([^"]+)"',Path(__file__).with_name('config.yaml').read_text())[1]
+sync=LiveSync(app,conn,RELEASE)
 mobile=install_mobile(app,conn,settings,DATA)
 
 @app.errorhandler(400)
@@ -292,11 +295,14 @@ def index(): return app.send_static_file('index.html')
 def state():
     with conn() as c:
         c.execute('BEGIN')
-        return jsonify(settings=settings(c),items=[get_item(c,x[0]) for x in c.execute('SELECT id FROM items ORDER BY rowid DESC').fetchall()],mobile=mobile['status']())
+        return jsonify(revision=sync.revision(c),release=RELEASE,settings_version=sync.settings_version(c),settings=settings(c),items=[get_item(c,x[0]) for x in c.execute('SELECT id FROM items ORDER BY rowid DESC').fetchall()],mobile=mobile['status']())
 @app.put('/api/settings')
 def update_settings():
-    s=valid_settings(request.get_json())
+    raw=request.get_json() or {};expected=raw.pop('expected_version',None)
+    s=valid_settings(raw)
     with conn() as c:
+        c.execute('BEGIN IMMEDIATE')
+        if expected is not None and expected!=sync.settings_version(c):return jsonify(error='다른 화면에서 설정이 변경되었습니다. 최신 설정을 불러온 뒤 다시 수정해주세요.'),409
         s['mobile']=settings(c).get('mobile',{})
         c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(s,ensure_ascii=False),))
     return jsonify(ok=True)
@@ -330,7 +336,7 @@ def save(ident=None):
     with conn() as c:
         c.execute('BEGIN IMMEDIATE')
         old=get_item(c,ident) if ident else None
-        if old and raw.get('updated_at')!=old['updated_at']: return jsonify(error='다른 화면에서 변경되었습니다. 목록을 새로 불러온 뒤 수정해주세요.'),409
+        if old and raw.get('updated_at')!=old['updated_at']: return jsonify(error='다른 화면에서 변경되었습니다. 최신 기록을 불러온 뒤 다시 수정해주세요.'),409
         ident=ident or str(uuid.uuid4())
         history=old.get('history',[]) if old else []
         stamp=now()
@@ -692,5 +698,5 @@ def restore():
 if __name__=='__main__':
     from waitress import serve
     import threading
-    threading.Thread(target=lambda:serve(channel_app(app,'external'),host='0.0.0.0',port=8098,threads=4,max_request_body_size=2**40),daemon=True).start()
-    serve(channel_app(app,'ingress'),host=os.environ.get('CAMP_HOST','0.0.0.0'),port=int(os.environ.get('PORT','8099')),threads=4,max_request_body_size=2**40)
+    threading.Thread(target=lambda:serve(channel_app(app,'external'),host='0.0.0.0',port=8098,threads=16,max_request_body_size=2**40),daemon=True).start()
+    serve(channel_app(app,'ingress'),host=os.environ.get('CAMP_HOST','0.0.0.0'),port=int(os.environ.get('PORT','8099')),threads=16,max_request_body_size=2**40)

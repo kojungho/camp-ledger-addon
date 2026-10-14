@@ -44,6 +44,29 @@ class LedgerTest(unittest.TestCase):
         s=self.state()['settings'];s['purchase_types']=['선물','중고'];s['display']['cellPadding']=0;s['display']['columns']['name'].update(width=24,auto=True);s['display']['columnOrder']=list(reversed(ledger.DISPLAY_LABELS));s['display']['visibleColumns']=['name','category']
         self.assertEqual(self.client.put('/api/settings',json=s,headers=self.headers).status_code,200);self.assertEqual(self.state()['settings']['purchase_types'],['선물','중고'])
 
+    def test_live_revision_and_setting_conflicts(self):
+        revision=self.client.get('/api/revision').json['revision'];before=self.state()
+        self.assertEqual(before['revision'],revision)
+        self.assertEqual(self.client.get('/api/revision').json['revision'],revision)
+        ident=self.save(self.item(),photos=2).json['id'];created=self.state()
+        self.assertGreater(created['revision'],revision);self.assertEqual(created['settings_version'],before['settings_version'])
+        invalid={**created['items'][0],'purchase_qty':0};self.assertEqual(self.save(invalid,ident).status_code,400)
+        self.assertEqual(self.state()['revision'],created['revision'])
+        s={**created['settings'],'expected_version':created['settings_version']};s['display']['cellPadding']=5
+        self.assertEqual(self.client.put('/api/settings',json=s,headers=self.headers).status_code,200)
+        newer=self.state();self.assertGreater(newer['revision'],created['revision']);self.assertNotEqual(newer['settings_version'],created['settings_version'])
+        s['display']['cellPadding']=8
+        self.assertEqual(self.client.put('/api/settings',json=s,headers=self.headers).status_code,409)
+        self.assertEqual(self.state()['settings']['display']['cellPadding'],5)
+        with ledger.conn() as c:
+            c.execute('BEGIN IMMEDIATE');c.execute('DELETE FROM items WHERE id=?',(ident,));c.rollback()
+        self.assertEqual(self.state()['revision'],newer['revision'])
+        stream=self.client.get('/api/events',buffered=False);parts=iter(stream.response)
+        self.assertIn(b'retry:',next(parts));self.assertIn(b'event: change',next(parts))
+        self.client.post('/api/delete',json={'ids':[ident]},headers=self.headers)
+        self.assertIn(b'event: change',next(parts));stream.close()
+        self.assertGreater(self.state()['revision'],newer['revision'])
+
     def test_dollar_purchases_and_mobile_settings(self):
         rate={'exchange_rate':1333.09,'exchange_date':'2026-10-12'}
         with patch.object(ledger,'get_rate',return_value=rate):

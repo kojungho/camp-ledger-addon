@@ -29,6 +29,7 @@ jobs:
           node --check camp_ledger/static/foreign.js
           node --check camp_ledger/static/mobile-display.js
           node --check camp_ledger/static/popup-viewport.js
+          node --check camp_ledger/static/auto-sync.js
   build:
     needs: test
     strategy:
