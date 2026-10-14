@@ -256,6 +256,17 @@ class LedgerTest(unittest.TestCase):
         self.assertEqual(self.client.post('/api/import/commit',json={'token':preview['token']},headers=self.headers).status_code,400)
         self.assertEqual(len(self.state()['items']),1)
 
+    def test_photo_picker_settings(self):
+        s=self.state()['settings']
+        self.assertEqual(s['display']['photoPickerSource'],'files')
+        for source in ('gallery','files'):
+            s['display']['photoPickerSource']=source
+            self.assertEqual(self.client.put('/api/settings',json=s,headers=self.headers).status_code,200)
+            self.assertEqual(self.state()['settings']['display']['photoPickerSource'],source)
+        s['display']['photoPickerSource']='camera'
+        self.assertEqual(self.client.put('/api/settings',json=s,headers=self.headers).status_code,400)
+        self.assertEqual(self.state()['settings']['display']['photoPickerSource'],'files')
+
     def test_mobile_item_spacing_persistence_and_validation(self):
         s=self.state()['settings']
         pc=json.loads(json.dumps(s['display']['columns']))

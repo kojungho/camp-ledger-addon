@@ -35,14 +35,14 @@ DISPLAY_LABELS = {**FIELDS, 'purchase_url':'사이트', 'total_purchase_cost':'�
 for key in DISPLAY_LABELS:
     DEFAULT['display']['columns'].setdefault(key, {'font':14,'width':320 if key=='notes' else 160})
 DEFAULT['display'].update(visibleColumns=['category','name','purchase_price','sale_price'],
-                          visibleSummaries=['purchase','sale','net','owned'],showProductThumb=True,mobileColumns=2,rememberDialogScroll=False,cellVerticalPadding=12,bodyWeight=400,headerWeight=500,titleWeight=700,detailWeight=400)
+                          visibleSummaries=['purchase','sale','net','owned'],photoPickerSource='files',showProductThumb=True,mobileColumns=2,rememberDialogScroll=False,cellVerticalPadding=12,bodyWeight=400,headerWeight=500,titleWeight=700,detailWeight=400)
 
 DEFAULT['display']['mobile']={'font':13,'headerFont':10,'bodyWeight':400,'headerWeight':400,'cellPadding':0,'cellVerticalPadding':0,'rowHeight':0,'headerHeight':0,'headerPadding':0,'cardPadding':12,'fieldGap':12,'columnGap':12,'labelGap':3,'linkSize':30,'columns':{}}
 
 def normalize_settings(s):
     s.setdefault('purchase_types',['미기재','새상품','중고'])
     d=s.setdefault('display',{})
-    for key in ('visibleColumns','visibleSummaries','showProductThumb','mobileColumns','rememberDialogScroll','headerFont','headerPadding','bodyWeight','headerWeight','titleWeight','detailWeight','cellVerticalPadding'):
+    for key in ('visibleColumns','visibleSummaries','photoPickerSource','showProductThumb','mobileColumns','rememberDialogScroll','headerFont','headerPadding','bodyWeight','headerWeight','titleWeight','detailWeight','cellVerticalPadding'):
         if key not in d: d[key]=list(DEFAULT['display'][key]) if isinstance(DEFAULT['display'][key],list) else DEFAULT['display'][key]
     if 'columnOrder' in d:
         d['columnOrder']=[k for k in d['columnOrder'] if k in DISPLAY_LABELS]+[k for k in DISPLAY_LABELS if k not in d['columnOrder']]
@@ -256,6 +256,7 @@ def valid_settings(s):
         values=d[key]
         if not isinstance(values,list) or any(not isinstance(v,str) or v not in allowed for v in values) or len(set(values))!=len(values): raise ValueError('메인 화면 표시 항목을 확인해주세요.')
     if not d['visibleColumns']: raise ValueError('목록에 표시할 항목을 하나 이상 선택해주세요.')
+    if d['photoPickerSource'] not in ('gallery','files'): raise ValueError('사진 선택 방식을 확인해주세요.')
     if type(d['mobileColumns']) is not int or not 2<=d['mobileColumns']<=8: raise ValueError('모바일 한 줄 항목 수는 2~8개입니다.')
     if type(d['rememberDialogScroll']) is not bool: raise ValueError('팝업 스크롤 기억 설정을 확인해주세요.')
     if type(d['showProductThumb']) is not bool: raise ValueError('대표 사진 표시 설정을 확인해주세요.')

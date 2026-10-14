@@ -9,6 +9,8 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Build;
+import android.provider.MediaStore;
+import org.json.JSONObject;
 import android.view.ViewGroup;
 import android.os.Environment;
 import android.security.keystore.KeyGenParameterSpec;
@@ -108,8 +110,13 @@ public class MainActivity extends Activity {
         web.setWebChromeClient(new WebChromeClient(){
             @Override public boolean onShowFileChooser(WebView view,ValueCallback<Uri[]> callback,FileChooserParams params){
                 if(chooser!=null)chooser.onReceiveValue(null);chooser=callback;
-                Intent select=new Intent(Intent.ACTION_OPEN_DOCUMENT);select.addCategory(Intent.CATEGORY_OPENABLE);select.setType("*/*");select.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,params.getMode()==FileChooserParams.MODE_OPEN_MULTIPLE);
-                try{startActivityForResult(select,10);}catch(Exception e){chooser.onReceiveValue(null);chooser=null;}return true;
+                view.evaluateJavascript("JSON.stringify({source:document.documentElement.dataset.photoPickerSource,photo:!!document.activeElement&&document.activeElement.matches('#photos,#receipts,[data-photo-picker]')})", result->{
+                    if(chooser!=callback)return;
+                    boolean gallery=false,image=false;
+                    for(String type:params.getAcceptTypes())if(type!=null&&type.startsWith("image/"))image=true;
+                    try{String json=new org.json.JSONTokener(result).nextValue().toString();JSONObject preference=new JSONObject(json);gallery="gallery".equals(preference.optString("source"))&&(image||preference.optBoolean("photo"));}catch(Exception ignored){}
+                    openChooser(params,gallery,image);
+                });return true;
             }
         });
         web.setDownloadListener((url,agent,disposition,mime,length)->{
@@ -118,6 +125,23 @@ public class MainActivity extends Activity {
         });
         setContentView(web);
         cookies.setCookie(BASE,"camp_device="+key+"; Path=/camp-ledger/; Max-Age=157680000; Secure; HttpOnly; SameSite=Strict",value->{cookies.flush();web.loadUrl(BASE);});
+    }
+    private void openChooser(WebChromeClient.FileChooserParams params,boolean gallery,boolean image) {
+        boolean multiple=params.getMode()==WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE;
+        Intent select;
+        if(gallery&&Build.VERSION.SDK_INT>=33){
+            select=new Intent(MediaStore.ACTION_PICK_IMAGES);select.setType("image/*");
+            if(multiple)select.putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX,MediaStore.getPickImagesMaxLimit());
+        }else if(gallery){
+            select=new Intent(Intent.ACTION_GET_CONTENT);select.setType("image/*");select.addCategory(Intent.CATEGORY_OPENABLE);select.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,multiple);
+        }else{
+            select=new Intent(Intent.ACTION_OPEN_DOCUMENT);select.addCategory(Intent.CATEGORY_OPENABLE);select.setType(image?"image/*":"*/*");select.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,multiple);
+        }
+        select.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        try{startActivityForResult(select,10);}catch(Exception first){
+            if(gallery){Intent fallback=new Intent(Intent.ACTION_GET_CONTENT);fallback.setType("image/*");fallback.addCategory(Intent.CATEGORY_OPENABLE);fallback.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,multiple);try{startActivityForResult(fallback,10);return;}catch(Exception ignored){}}
+            if(chooser!=null){chooser.onReceiveValue(null);chooser=null;}Toast.makeText(this,"사진 선택 앱을 열지 못했습니다.",Toast.LENGTH_LONG).show();
+        }
     }
     @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==10&&chooser!=null){ValueCallback<Uri[]> pending=chooser;chooser=null;pending.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(result,data));}}
     @Override public void onBackPressed(){if(web!=null&&web.canGoBack())web.goBack();else super.onBackPressed();}
