@@ -23,7 +23,7 @@ DATA = Path(os.environ.get('CAMP_DATA', '/data/camp-ledger'))
 DATA.mkdir(parents=True, exist_ok=True)
 DB = DATA / 'ledger.sqlite3'
 DEFAULT = {'categories':['부품','텐트','의자','테이블','소모품','기타'], 'methods':['온라인','오프라인'], 'buyers':['나','가족'], 'display': {'rowHeight':72,'headerHeight':48,'headerFont':12,'headerPadding':10,'cellPadding':20,'detailFont':15,'titleFont':32,'columns':{'category':{'font':14,'width':130},'name':{'font':16,'width':360},'purchase_price':{'font':16,'width':165},'sale_price':{'font':16,'width':165}}}}
-FIELDS = {'category':'구분','name':'상품명','purchase_date':'구입일자','method':'구매방식','buyer':'구매자','purchase_price':'구입가격','sale_price':'판매가격','status':'상태','sale_date':'판매일자','disposal_date':'폐기일자','notes':'메모'}
+FIELDS = {'category':'구분','name':'상품명','purchase_date':'구입일자','method':'구입처','buyer':'구매자','purchase_price':'구입가격','sale_price':'판매가격','status':'상태','sale_date':'판매일자','disposal_date':'폐기일자','notes':'메모'}
 FIELDS.update(purchase_qty='구매수량',current_qty='현재수량',sold_qty='판매수량')
 FIELDS.update(cost_unconfirmed='개별원가미확정',shared_purchase_total='공동구매금액')
 FIELDS.update(purchase_type='구매유형',brand='브랜드',purchase_url='구매 사이트 링크',shipping_fee='배송비',purchase_currency='최초 구매 통화',foreign_amount='최초 구매 달러금액',exchange_rate='적용 환율',exchange_date='환율 기준일')
@@ -420,7 +420,7 @@ def export():
                     im.thumbnail((180,130)); buf=io.BytesIO(); im.convert('RGB').save(buf,'PNG'); buf.seek(0)
                 xl=XLImage(buf); photos.add_image(xl,f'G{photos.max_row}'); photos.row_dimensions[photos.max_row].height=105
         prefs.append(['항목','값']); s=settings(c)
-        for k in ('categories','methods','buyers','purchase_types'): prefs.append([{'categories':'구분','methods':'구매방식','buyers':'구매자','purchase_types':'구매유형'}[k],json.dumps(s[k],ensure_ascii=False)])
+        for k in ('categories','methods','buyers','purchase_types'): prefs.append([{'categories':'구분','methods':'구입처','buyers':'구매자','purchase_types':'구매유형'}[k],json.dumps(s[k],ensure_ascii=False)])
         prefs.append(['화면 설정',json.dumps(s['display'],ensure_ascii=False)])
     summary.append(['상태','수량','구입 합계','실제 판매 합계','순지출'])
     for status,label in list(STATUSES.items())+[('all','전체')]:
@@ -501,7 +501,7 @@ def import_template():
         ('날짜','YYYY-MM-DD 또는 Excel 날짜. 예: 2026-10-13'),
         ('구매유형','새상품 / 중고 / 미기재. 자료에 없으면 미기재로 저장합니다.'),
         ('상태','보유 / 판매 / 폐기. 비워두면 보유로 추가됩니다.'),
-        ('구분·구매방식·구매자','설정에 등록된 목록을 선택할 수 있습니다. 새 값을 직접 입력하면 목록에도 추가됩니다.'),
+        ('구분·구입처·구매자','설정에 등록된 목록을 선택할 수 있습니다. 새 값을 직접 입력하면 목록에도 추가됩니다.'),
         ('업로드 순서','엑셀 업로드 → 파일 선택 → 내용 확인 → 추가하기'),
         ('입력 오류','오류가 있는 행을 수정한 후 다시 올려주세요. 오류가 있으면 어떤 상품도 추가하지 않습니다.'),
         ('반복 업로드','같은 파일을 다시 올리면 같은 상품도 새 항목으로 추가됩니다.'),
@@ -511,7 +511,7 @@ def import_template():
         ('파일 형식','xlsx · 파일당 20,000개 상품 / 20MB까지'),
         ('예시','아래 예시는 작성 안내용이며 업로드 대상이 아닙니다.')]
     for row in instructions: guide.append(row)
-    guide.append(['구분: 의자','상품명: 헬리녹스 체어원 / 구입일자: 2026-10-13 / 구매방식: 온라인 / 구매자: 나 / 구입가격: 135000 / 상태: 보유'])
+    guide.append(['구분: 의자','상품명: 헬리녹스 체어원 / 구입일자: 2026-10-13 / 구입처: 온라인 / 구매자: 나 / 구입가격: 135000 / 상태: 보유'])
     for row in guide:
         guide.row_dimensions[row[0].row].height=36
         for cell in row: cell.alignment=Alignment(vertical='center',wrap_text=True); cell.font=Font(color='52654F',size=11)
@@ -574,7 +574,7 @@ def preview_import():
         ws=next((wb[name] for name in ('용품 입력','전체 상품') if name in wb.sheetnames),wb.worksheets[0])
         if (ws.max_column or 0)>100 or (ws.max_row or 0)>20001: raise ValueError('파일당 최대 20,000행입니다. 입력 범위를 확인해주세요.')
         first=next(ws.iter_rows(min_row=1,max_row=1),())
-        mapping={}; labels={v:k for k,v in FIELDS.items()}
+        mapping={}; labels={**{v:k for k,v in FIELDS.items()},'구매방식':'method','구매 방식':'method'}
         for n,cell in enumerate(first):
             header=str(cell.value or '').strip().removesuffix('*').strip()
             if header not in labels: continue
