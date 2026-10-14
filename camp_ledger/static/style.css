@@ -47,3 +47,5 @@ dialog{position:fixed;inset-inline:0;top:var(--popup-top,12px);bottom:auto;margi
 @media(max-width:760px){.mobile-card-fields{display:flex;flex-wrap:wrap;align-items:flex-start}.mobile-field{flex:0 0 min(var(--mobile-item-width,calc((100% - (var(--mobile-columns,2) - 1)*var(--mobile-columnGap,12px))/var(--mobile-columns,2))),calc(100% - var(--mobile-item-horizontal-space,0px)));max-width:calc(100% - var(--mobile-item-horizontal-space,0px))}}
 
 @media(max-width:760px){.mobile-field{text-align:center}.mobile-field .header-sort{justify-content:center}.mobile-field>div .product-name,.mobile-field .status-badges{justify-content:center}}
+
+@media(max-width:760px){.tabs{width:100%;gap:6px}.tabs button{flex:1;justify-content:center;font-size:clamp(9px,2.8vw,12px);gap:3px;white-space:nowrap}.tabs button span{font-size:10px;padding:2px 4px}}
