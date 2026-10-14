@@ -44,7 +44,7 @@ dialog{position:fixed;inset-inline:0;top:var(--popup-top,12px);bottom:auto;margi
 
 @media(min-width:761px){#gear-table th,#gear-table td:not(.name){text-align:center}#gear-table th .header-sort{justify-content:center}#gear-table td:is(.purchase_price,.sale_price,.avg_unit_price,.current_value,.deducted_value,.shared_purchase_total,.shipping_fee,.total_purchase_cost,.foreign_amount,.exchange_rate){text-align:right}#gear-table td:not(.name) .status-badges,#gear-table td.photos .product-name{justify-content:center}}
 
-@media(max-width:760px){.mobile-card-fields{display:flex;flex-wrap:wrap;align-items:flex-start}.mobile-field{flex:0 0 min(var(--mobile-item-width,calc((100% - (var(--mobile-columns,2) - 1)*var(--mobile-columnGap,12px))/var(--mobile-columns,2))),calc(100% - var(--mobile-item-horizontal-space,0px)));max-width:calc(100% - var(--mobile-item-horizontal-space,0px))}}
+@media(max-width:760px){.mobile-card-fields{display:flex;flex-wrap:wrap;align-items:flex-start}.mobile-field{flex:1 0 min(var(--mobile-item-width,calc((100% - (var(--mobile-columns,2) - 1)*var(--mobile-columnGap,12px))/var(--mobile-columns,2))),calc(100% - var(--mobile-item-horizontal-space,0px)));max-width:calc(100% - var(--mobile-item-horizontal-space,0px))}}
 
 @media(max-width:760px){.mobile-field{text-align:center}.mobile-field .header-sort{justify-content:center}.mobile-field>div .product-name,.mobile-field .status-badges{justify-content:center}}
 
