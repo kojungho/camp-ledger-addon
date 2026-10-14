@@ -259,13 +259,13 @@ class LedgerTest(unittest.TestCase):
     def test_mobile_item_spacing_persistence_and_validation(self):
         s=self.state()['settings']
         pc=json.loads(json.dumps(s['display']['columns']))
-        spacing={'labelGap':0,'spaceTop':3,'spaceBottom':7,'spaceLeft':2,'spaceRight':9}
+        spacing={'width':84,'labelGap':0,'spaceTop':3,'spaceBottom':7,'spaceLeft':2,'spaceRight':9}
         s['display']['mobile']['columns']={'category':spacing,'name':{'spaceBottom':6}}
         self.assertEqual(self.client.put('/api/settings',json=s,headers=self.headers).status_code,200)
         saved=self.state()['settings']['display']
         self.assertEqual(saved['mobile']['columns']['category'],spacing)
         self.assertEqual(saved['columns'],pc)
-        for key,value in [('labelGap',41),('spaceTop',-1),('spaceRight',61)]:
+        for key,value in [('width',39),('width',601),('labelGap',41),('spaceTop',-1),('spaceRight',61)]:
             invalid=json.loads(json.dumps(s));invalid['display']['mobile']['columns']['category'][key]=value
             self.assertEqual(self.client.put('/api/settings',json=invalid,headers=self.headers).status_code,400)
         self.assertEqual(self.state()['settings']['display']['mobile']['columns']['category'],spacing)
