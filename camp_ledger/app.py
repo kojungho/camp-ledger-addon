@@ -256,7 +256,7 @@ def valid_settings(s):
         values=d[key]
         if not isinstance(values,list) or any(not isinstance(v,str) or v not in allowed for v in values) or len(set(values))!=len(values): raise ValueError('메인 화면 표시 항목을 확인해주세요.')
     if not d['visibleColumns']: raise ValueError('목록에 표시할 항목을 하나 이상 선택해주세요.')
-    if type(d['mobileColumns']) is not int or not 2<=d['mobileColumns']<=6: raise ValueError('모바일 한 줄 항목 수는 2~6개입니다.')
+    if type(d['mobileColumns']) is not int or not 2<=d['mobileColumns']<=8: raise ValueError('모바일 한 줄 항목 수는 2~8개입니다.')
     if type(d['rememberDialogScroll']) is not bool: raise ValueError('팝업 스크롤 기억 설정을 확인해주세요.')
     if type(d['showProductThumb']) is not bool: raise ValueError('대표 사진 표시 설정을 확인해주세요.')
     return s

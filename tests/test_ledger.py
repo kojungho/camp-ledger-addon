@@ -142,9 +142,9 @@ class LedgerTest(unittest.TestCase):
         bad={**saved,'purchase_url':'javascript:alert(1)'};r=self.save(bad,ident);self.assertEqual(r.status_code,400);self.assertEqual(r.json['fields'],['purchase_url'])
         wb=load_workbook(io.BytesIO(self.client.get('/api/export').data));self.assertIn('브랜드',[c.value for c in wb['전체 상품'][1]]);self.assertIn('구매 사이트 링크',[c.value for c in wb['전체 상품'][1]])
         s=self.state()['settings'];self.assertFalse(s['display']['rememberDialogScroll']);self.assertEqual(s['display']['mobileColumns'],2)
-        s['display'].update(mobileColumns=6,rememberDialogScroll=True);self.assertEqual(self.client.put('/api/settings',json=s,headers=self.headers).status_code,200)
+        s['display'].update(mobileColumns=8,rememberDialogScroll=True);self.assertEqual(self.client.put('/api/settings',json=s,headers=self.headers).status_code,200)
         s['display']['mobileColumns']=7;self.assertEqual(self.client.put('/api/settings',json=s,headers=self.headers).status_code,400)
-        self.assertEqual(self.state()['settings']['display']['mobileColumns'],6)
+        self.assertEqual(self.state()['settings']['display']['mobileColumns'],8)
 
     def test_full_lifecycle_and_export(self):
         r=self.save(self.item(),photos=12);self.assertEqual(r.status_code,200)
