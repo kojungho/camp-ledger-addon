@@ -256,6 +256,20 @@ class LedgerTest(unittest.TestCase):
         self.assertEqual(self.client.post('/api/import/commit',json={'token':preview['token']},headers=self.headers).status_code,400)
         self.assertEqual(len(self.state()['items']),1)
 
+    def test_scroll_top_position_settings(self):
+        settings=self.state()['settings']
+        self.assertEqual(settings['display']['scrollTopPosition'],'bottom-right')
+        for position in ('top-left','top-center','top-right','bottom-left','bottom-center','bottom-right'):
+            settings['display']['scrollTopPosition']=position
+            self.assertEqual(self.client.put('/api/settings',json=settings,headers=self.headers).status_code,200)
+            self.assertEqual(self.state()['settings']['display']['scrollTopPosition'],position)
+        settings['display']['scrollTopPosition']='middle'
+        self.assertEqual(self.client.put('/api/settings',json=settings,headers=self.headers).status_code,400)
+        self.assertEqual(self.state()['settings']['display']['scrollTopPosition'],'bottom-right')
+        settings['display'].pop('scrollTopPosition')
+        with ledger.conn() as c:c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(settings),))
+        self.assertEqual(self.state()['settings']['display']['scrollTopPosition'],'bottom-right')
+
     def test_photo_picker_settings(self):
         s=self.state()['settings']
         self.assertEqual(s['display']['photoPickerSource'],'files')
