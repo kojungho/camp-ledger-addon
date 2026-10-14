@@ -23,6 +23,8 @@ jobs:
       - run: |
           node --check camp_ledger/static/app.js
           node --check camp_ledger/static/calendar.js
+          node --check camp_ledger/static/toast.js
+          node --check camp_ledger/static/mobile.js
   build:
     needs: test
     strategy:

@@ -10,13 +10,13 @@ const summaryLabels={purchase:'총 구입금액',sale:'판매 회수금액',net:
 const statusName={owned:'보유',sold:'판매 완료',disposed:'폐기'};
 const titles={all:['나의 캠핑용품','함께한 장비와 다음 여행을 위한 기록.','전체 용품'],owned:['함께하는 용품','다음 캠핑을 기다리는 나의 장비.','보유 용품'],sold:['판매한 용품','새로운 캠퍼에게 이어진 장비의 기록.','판매 용품'],disposed:['정리한 용품','오래 함께했던 장비의 마지막 기록.','폐기 용품']};
 const defaultDisplay={rowHeight:72,headerHeight:48,cellPadding:20,detailFont:15,titleFont:32,columns:{category:{font:14,width:130},name:{font:16,width:360},purchase_price:{font:16,width:165},sale_price:{font:16,width:165}}};
-let state={items:[],settings:null}, view='all', selected=new Set(), current=null, files=[], deleted=new Set(), draftSettings, dirty=false, toastTimer, operations=[];
+let state={items:[],settings:null}, view='all', selected=new Set(), current=null, files=[], deleted=new Set(), draftSettings, dirty=false, operations=[];
 const itemForm=$('#item-form');
 const dialogScrollPositions=new Map();
 function showPopup(dialog){if(!dialog.open)dialog.showModal();const body=dialog.querySelector('.modal-body')||dialog;body.scrollTop=state.settings?.display.rememberDialogScroll?(dialogScrollPositions.get(dialog.id)||0):0;}
 $$('dialog').forEach(dialog=>{const body=dialog.querySelector('.modal-body')||dialog;body.addEventListener('scroll',()=>{if(state.settings?.display.rememberDialogScroll)dialogScrollPositions.set(dialog.id,body.scrollTop);},{passive:true});});
 async function api(path,options={}){const res=await fetch(path,{...options,headers:{'X-Camp-Request':'1',...options.headers}});let data;try{data=await res.json()}catch{throw Error('서버 응답을 확인해주세요.')}if(!res.ok){const e=Error(data.error||'저장하지 못했습니다.');e.fields=data.fields||[];throw e;}return data;}
-function toast(message){const top=$$('dialog[open]').at(-1);(top||document.body).append($('#toast'));$('#toast').textContent=message;$('#toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.remove('show'),8000)}
+function toast(message){window.showToast(message)}
 function handleError(e){const form=$$('dialog[open] form').at(-1);if(form){for(const key of e.fields||[]){const input=form.elements[key];if(input){input.classList.add('input-error');input.setAttribute('aria-invalid','true');}}form.querySelector('.input-error')?.focus();}toast(e.message||'작업을 완료하지 못했습니다.')}
 document.addEventListener('invalid',e=>{e.target.classList.add('input-error');e.target.setAttribute('aria-invalid','true');},true);document.addEventListener('input',e=>{e.target.classList.remove('input-error');e.target.removeAttribute('aria-invalid');});
 function options(el,list,value,placeholder='선택 안 함'){el.innerHTML=`<option value="">${placeholder}</option>`+[...new Set([...list,...(value?[value]:[])])].map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');el.value=value||'';}
