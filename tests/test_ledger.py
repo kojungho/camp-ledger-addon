@@ -43,6 +43,20 @@ class LedgerTest(unittest.TestCase):
         s=self.state()['settings'];s['purchase_types']=['선물','중고'];s['display']['cellPadding']=0;s['display']['columns']['name'].update(width=24,auto=True);s['display']['columnOrder']=list(reversed(ledger.DISPLAY_LABELS));s['display']['visibleColumns']=['name','category']
         self.assertEqual(self.client.put('/api/settings',json=s,headers=self.headers).status_code,200);self.assertEqual(self.state()['settings']['purchase_types'],['선물','중고'])
 
+    def test_product_and_receipt_delete_then_readd_same_name(self):
+        ident=self.save(self.item(),photos=2).json['id']
+        for cycle in range(2):
+            old=self.state()['items'][0];deleted=[a['id'] for a in old['attachments']]
+            self.assertEqual(self.save(old,ident,deletes=deleted).status_code,200)
+            cleared=self.state()['items'][0];self.assertEqual(cleared['attachments'],[])
+            self.assertEqual(self.save(cleared,ident,photos=2).status_code,200)
+            restored=self.state()['items'][0]
+            self.assertEqual([a['kind'] for a in restored['attachments']],['product','receipt'])
+            self.assertEqual([a['name'] for a in restored['attachments']],['사진0.png','사진1.png'])
+            self.assertEqual((restored['product_photo_count'],restored['receipt_photo_count']),(1,1))
+            for attachment in restored['attachments']:self.assertEqual(self.client.get('/api/photos/'+attachment['id']).status_code,200)
+            for aid in deleted:self.assertEqual(self.client.get('/api/photos/'+aid).status_code,404)
+
     def test_full_lifecycle_and_export(self):
         r=self.save(self.item(),photos=12);self.assertEqual(r.status_code,200)
         first=self.state()['items'][0];self.assertEqual(len(first['attachments']),12);self.assertEqual(sum(a['kind']=='receipt' for a in first['attachments']),6)

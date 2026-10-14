@@ -50,8 +50,8 @@ public class MainActivity extends Activity {
         if(key==null)showConnect(); else showLedger();
     }
     @Override protected void onNewIntent(Intent intent) {
-        super.onNewIntent(intent);setIntent(intent);handleIntent(intent);
-        if(key!=null)showLedger();
+        super.onNewIntent(intent);setIntent(intent);String previousKey=key;handleIntent(intent);
+        if(key!=null&&(web==null||!key.equals(previousKey)))showLedger();
     }
     private void handleIntent(Intent intent) {
         Uri uri=intent.getData();
@@ -113,7 +113,7 @@ public class MainActivity extends Activity {
         setContentView(web);
         cookies.setCookie(BASE,"camp_device="+key+"; Path=/camp-ledger/; Max-Age=157680000; Secure; HttpOnly; SameSite=Strict",value->{cookies.flush();web.loadUrl(BASE);});
     }
-    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==10&&chooser!=null){chooser.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(result,data));chooser=null;}}
+    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==10&&chooser!=null){ValueCallback<Uri[]> pending=chooser;chooser=null;pending.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(result,data));}}
     @Override public void onBackPressed(){if(web!=null&&web.canGoBack())web.goBack();else super.onBackPressed();}
     @Override protected void onDestroy(){if(web!=null)web.destroy();super.onDestroy();}
 }
