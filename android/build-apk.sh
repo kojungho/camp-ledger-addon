@@ -16,3 +16,10 @@ jar cf "$build_dir/classes.jar" -C "$build_dir/classes" .
 "$build_tools/zipalign" -p -f 4 "$build_dir/unsigned.apk" "$build_dir/aligned.apk"
 "$build_tools/apksigner" sign --ks "${CAMP_APK_KEYSTORE:?Set CAMP_APK_KEYSTORE}" --ks-key-alias camp-ledger --ks-pass env:CAMP_APK_STOREPASS --key-pass env:CAMP_APK_STOREPASS --out "$build_dir/camp-ledger.apk" "$build_dir/aligned.apk"
 "$build_tools/apksigner" verify --verbose "$build_dir/camp-ledger.apk"
+python3 - "$src_dir/AndroidManifest.xml" "$build_dir/camp-ledger.apk" "$build_dir/android-version.json" <<'PY'
+import hashlib,json,sys,xml.etree.ElementTree as ET
+from pathlib import Path
+manifest=ET.parse(sys.argv[1]).getroot();android='{http://schemas.android.com/apk/res/android}'
+metadata={'version_code':int(manifest.attrib[android+'versionCode']),'version_name':manifest.attrib[android+'versionName'],'sha256':hashlib.sha256(Path(sys.argv[2]).read_bytes()).hexdigest()}
+Path(sys.argv[3]).write_text(json.dumps(metadata,ensure_ascii=False,indent=2)+'\n')
+PY

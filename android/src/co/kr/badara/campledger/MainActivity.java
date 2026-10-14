@@ -10,7 +10,12 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Build;
 import android.provider.MediaStore;
-import org.json.JSONObject;
+import android.webkit.JavascriptInterface;
+import android.database.Cursor;
+import android.provider.OpenableColumns;
+import java.io.*;
+import java.util.ArrayList;
+import java.util.UUID;
 import android.view.ViewGroup;
 import android.os.Environment;
 import android.security.keystore.KeyGenParameterSpec;
@@ -43,6 +48,16 @@ public class MainActivity extends Activity {
     private static final String ALIAS="camp-ledger-device-key";
     private WebView web;
     private ValueCallback<Uri[]> chooser;
+    private volatile String requestedPhotoPickerMode;
+    private volatile boolean editing=false;
+    private boolean chooserPhotos=false;
+    private AppUpdater updater;
+    public final class PhotoPickerBridge {
+        @JavascriptInterface public void preparePhotoPicker(String mode) {requestedPhotoPickerMode="gallery".equals(mode)?"gallery":"files";}
+        @JavascriptInterface public void setEditing(boolean value){editing=value;if(!value&&updater!=null)runOnUiThread(()->updater.maybeInstall());}
+        @JavascriptInterface public String getVersion() {return appVersion();}
+    }
+    private String appVersion(){try{return getPackageManager().getPackageInfo(getPackageName(),0).versionName;}catch(Exception e){return "";}}
     private String key;
     private SharedPreferences prefs;
 
@@ -50,8 +65,10 @@ public class MainActivity extends Activity {
         super.onCreate(state);
         prefs=getSharedPreferences("camp-ledger",MODE_PRIVATE);
         try {key=readKey();} catch(Exception e) {key=null;}
+        File photos=new File(getCacheDir(),"photos");File[] old=photos.listFiles();if(old!=null)for(File f:old)if(f.isFile()&&System.currentTimeMillis()-f.lastModified()>7L*24*60*60*1000)f.delete();
         handleIntent(getIntent());
         if(key==null)showConnect(); else showLedger();
+        updater=new AppUpdater(this,()->editing||chooser!=null);updater.check();
     }
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);setIntent(intent);String previousKey=key;handleIntent(intent);
@@ -99,6 +116,8 @@ public class MainActivity extends Activity {
             ViewGroup.LayoutParams raw=v.getLayoutParams();if(raw instanceof ViewGroup.MarginLayoutParams){ViewGroup.MarginLayoutParams params=(ViewGroup.MarginLayoutParams)raw;if(params.leftMargin!=left||params.topMargin!=top||params.rightMargin!=right||params.bottomMargin!=bottom){params.setMargins(left,top,right,bottom);v.setLayoutParams(params);}}return insets;
         });
         WebSettings settings=web.getSettings();settings.setJavaScriptEnabled(true);settings.setDomStorageEnabled(true);settings.setAllowFileAccess(false);settings.setAllowContentAccess(true);settings.setGeolocationEnabled(false);settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);settings.setSafeBrowsingEnabled(true);
+        settings.setUserAgentString(settings.getUserAgentString()+" CampLedgerAndroid/"+appVersion());
+        web.addJavascriptInterface(new PhotoPickerBridge(),"CampLedgerNative");
         CookieManager cookies=CookieManager.getInstance();cookies.setAcceptCookie(true);cookies.setAcceptThirdPartyCookies(web,false);
         web.setWebViewClient(new WebViewClient(){
             @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){
@@ -110,13 +129,10 @@ public class MainActivity extends Activity {
         web.setWebChromeClient(new WebChromeClient(){
             @Override public boolean onShowFileChooser(WebView view,ValueCallback<Uri[]> callback,FileChooserParams params){
                 if(chooser!=null)chooser.onReceiveValue(null);chooser=callback;
-                view.evaluateJavascript("JSON.stringify({source:document.documentElement.dataset.photoPickerSource,photo:!!document.activeElement&&document.activeElement.matches('#photos,#receipts,[data-photo-picker]')})", result->{
-                    if(chooser!=callback)return;
-                    boolean gallery=false,image=false;
-                    for(String type:params.getAcceptTypes())if(type!=null&&type.startsWith("image/"))image=true;
-                    try{String json=new org.json.JSONTokener(result).nextValue().toString();JSONObject preference=new JSONObject(json);gallery="gallery".equals(preference.optString("source"))&&(image||preference.optBoolean("photo"));}catch(Exception ignored){}
-                    openChooser(params,gallery,image);
-                });return true;
+                String requested=requestedPhotoPickerMode;requestedPhotoPickerMode=null;
+                boolean image=false;for(String type:params.getAcceptTypes())if(type!=null&&type.startsWith("image/"))image=true;
+                chooserPhotos=requested!=null||image;
+                openChooser(params,"gallery".equals(requested)&&image,image);return true;
             }
         });
         web.setDownloadListener((url,agent,disposition,mime,length)->{
@@ -143,7 +159,19 @@ public class MainActivity extends Activity {
             if(chooser!=null){chooser.onReceiveValue(null);chooser=null;}Toast.makeText(this,"사진 선택 앱을 열지 못했습니다.",Toast.LENGTH_LONG).show();
         }
     }
-    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==10&&chooser!=null){ValueCallback<Uri[]> pending=chooser;chooser=null;pending.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(result,data));}}
+    private Uri[] selectedUris(int result,Intent data){if(result!=RESULT_OK||data==null)return null;ArrayList<Uri> list=new ArrayList<>();if(data.getClipData()!=null)for(int i=0;i<data.getClipData().getItemCount();i++)list.add(data.getClipData().getItemAt(i).getUri());else if(data.getData()!=null)list.add(data.getData());return list.isEmpty()?null:list.toArray(new Uri[0]);}
+    private Uri cachePhoto(Uri source) throws Exception {
+        File dir=new File(getCacheDir(),"photos");dir.mkdirs();String name="photo.jpg";
+        try(Cursor cursor=getContentResolver().query(source,new String[]{OpenableColumns.DISPLAY_NAME},null,null,null)){if(cursor!=null&&cursor.moveToFirst())name=cursor.getString(0);}catch(Exception ignored){}
+        if(name==null||name.trim().isEmpty())name="photo.jpg";name=name.replaceAll("[^\\p{L}\\p{N}._ -]","_");if(name.length()>100)name=name.substring(name.length()-100);
+        File target=new File(dir,UUID.randomUUID().toString()+"-"+name);
+        try(InputStream in=getContentResolver().openInputStream(source);OutputStream out=new FileOutputStream(target)){if(in==null)throw new IOException();byte[] buffer=new byte[16384];int n;while((n=in.read(buffer))!=-1)out.write(buffer,0,n);}catch(Exception e){target.delete();throw e;}
+        if(target.length()==0){target.delete();throw new IOException();}return LedgerFileProvider.uri(this,"photos",target);
+    }
+    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request!=10||chooser==null)return;ValueCallback<Uri[]> pending=chooser;chooser=null;Uri[] uris=selectedUris(result,data);if(uris==null||!chooserPhotos){pending.onReceiveValue(uris);return;}
+        new Thread(()->{ArrayList<Uri> copied=new ArrayList<>();for(Uri uri:uris)try{copied.add(cachePhoto(uri));}catch(Exception ignored){}runOnUiThread(()->{if(copied.isEmpty()){pending.onReceiveValue(null);Toast.makeText(this,"선택한 사진을 읽지 못했습니다. 파일 앱으로 다시 선택해주세요.",Toast.LENGTH_LONG).show();}else pending.onReceiveValue(copied.toArray(new Uri[0]));});},"camp-ledger-photos").start();
+    }
+    @Override protected void onResume(){super.onResume();if(updater!=null)updater.maybeInstall();}
     @Override public void onBackPressed(){if(web!=null&&web.canGoBack())web.goBack();else super.onBackPressed();}
     @Override protected void onDestroy(){if(web!=null)web.destroy();super.onDestroy();}
 }
