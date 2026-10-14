@@ -256,6 +256,20 @@ class LedgerTest(unittest.TestCase):
         self.assertEqual(self.client.post('/api/import/commit',json={'token':preview['token']},headers=self.headers).status_code,400)
         self.assertEqual(len(self.state()['items']),1)
 
+    def test_mobile_item_spacing_persistence_and_validation(self):
+        s=self.state()['settings']
+        pc=json.loads(json.dumps(s['display']['columns']))
+        spacing={'labelGap':0,'spaceTop':3,'spaceBottom':7,'spaceLeft':2,'spaceRight':9}
+        s['display']['mobile']['columns']={'category':spacing,'name':{'spaceBottom':6}}
+        self.assertEqual(self.client.put('/api/settings',json=s,headers=self.headers).status_code,200)
+        saved=self.state()['settings']['display']
+        self.assertEqual(saved['mobile']['columns']['category'],spacing)
+        self.assertEqual(saved['columns'],pc)
+        for key,value in [('labelGap',41),('spaceTop',-1),('spaceRight',61)]:
+            invalid=json.loads(json.dumps(s));invalid['display']['mobile']['columns']['category'][key]=value
+            self.assertEqual(self.client.put('/api/settings',json=invalid,headers=self.headers).status_code,400)
+        self.assertEqual(self.state()['settings']['display']['mobile']['columns']['category'],spacing)
+
     def test_all_display_fields_and_legacy_settings(self):
         self.save(self.item())
         s=self.state()['settings'];s['display']['visibleColumns']=list(ledger.DISPLAY_LABELS)
