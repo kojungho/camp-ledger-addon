@@ -1,4 +1,5 @@
 import importlib.util, io, json, os, tempfile, unittest, zipfile, sys
+from unittest.mock import patch
 from pathlib import Path
 from datetime import datetime
 from PIL import Image
@@ -42,6 +43,29 @@ class LedgerTest(unittest.TestCase):
         item=self.state()['items'][0];self.assertEqual(len(item['purchases']),1);self.assertEqual(item['consumptions'],[]);self.assertEqual(item['current_qty'],6)
         s=self.state()['settings'];s['purchase_types']=['선물','중고'];s['display']['cellPadding']=0;s['display']['columns']['name'].update(width=24,auto=True);s['display']['columnOrder']=list(reversed(ledger.DISPLAY_LABELS));s['display']['visibleColumns']=['name','category']
         self.assertEqual(self.client.put('/api/settings',json=s,headers=self.headers).status_code,200);self.assertEqual(self.state()['settings']['purchase_types'],['선물','중고'])
+
+    def test_dollar_purchases_and_mobile_settings(self):
+        rate={'exchange_rate':1333.09,'exchange_date':'2026-10-12'}
+        with patch.object(ledger,'get_rate',return_value=rate):
+            ident=self.save({**self.item(purchase_currency='USD',foreign_amount=100.25,purchase_qty=2,current_qty=1,shipping_fee=3000),'purchase_date':'2026-10-12'}).json['id']
+            item=self.state()['items'][0];self.assertEqual(item['purchase_price'],133642);self.assertEqual(item['current_value'],68321)
+            self.assertEqual(item['purchases'][0]['foreign_amount'],100.25)
+            edit={**item,'purchase_qty':3,'current_qty':2,'purchase_price':147639,'shipping_fee':4000,'operations':[{'kind':'restock','quantity':1,'cost':13997,'shipping_fee':1000,'date':'2026-10-12','purchase_currency':'USD','foreign_amount':10.50}]}
+            self.assertEqual(self.save(edit,ident).status_code,200)
+            item=self.state()['items'][0];self.assertEqual(item['purchase_price'],147639);self.assertEqual(item['purchases'][1]['cost'],13997)
+            self.assertEqual(self.save({**item,'foreign_amount':1.001},ident).status_code,400)
+        wb=load_workbook(io.BytesIO(self.client.get('/api/export').data));headers=[c.value for c in wb['전체 상품'][1]];date_cell=wb['전체 상품'].cell(2,headers.index('구입일자')+1)
+        self.assertEqual(date_cell.number_format,'yy.mm.dd');self.assertIn('달러 구매금액',[c.value for c in wb['구매 내역'][1]])
+        backup=self.client.get('/api/backup').data
+        with patch.object(ledger,'get_rate',side_effect=ValueError('환율 연결 실패')):
+            self.assertEqual(self.client.post('/api/restore',data={'backup':(io.BytesIO(backup),'backup.zip')},headers=self.headers).status_code,200)
+            saved=self.state()['items'][0];self.assertEqual(saved['purchase_price'],147639)
+            self.assertEqual(self.save(saved,saved['id']).status_code,400)
+        s=self.state()['settings'];m=s['display']['mobile'];self.assertEqual(m['headerHeight'],0);self.assertEqual(m['headerPadding'],0)
+        m.update(labelGap=1,headerFont=9);m['columns']['brand']={'fontWeight':700,'padding':0}
+        self.assertEqual(self.client.put('/api/settings',json=s,headers=self.headers).status_code,200)
+        self.assertEqual(self.state()['settings']['display']['headerHeight'],48)
+        m['labelGap']=-1;self.assertEqual(self.client.put('/api/settings',json=s,headers=self.headers).status_code,400)
 
     def test_fine_display_preferences(self):
         s=self.state()['settings'];d=s['display'];self.assertEqual(d['headerFont'],12);self.assertEqual(d['bodyWeight'],400)

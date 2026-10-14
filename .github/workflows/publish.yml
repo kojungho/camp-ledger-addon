@@ -25,6 +25,9 @@ jobs:
           node --check camp_ledger/static/calendar.js
           node --check camp_ledger/static/toast.js
           node --check camp_ledger/static/mobile.js
+          node --check camp_ledger/static/dates.js
+          node --check camp_ledger/static/foreign.js
+          node --check camp_ledger/static/mobile-display.js
   build:
     needs: test
     strategy:
