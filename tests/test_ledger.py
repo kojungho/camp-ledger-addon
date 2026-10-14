@@ -43,6 +43,27 @@ class LedgerTest(unittest.TestCase):
         s=self.state()['settings'];s['purchase_types']=['선물','중고'];s['display']['cellPadding']=0;s['display']['columns']['name'].update(width=24,auto=True);s['display']['columnOrder']=list(reversed(ledger.DISPLAY_LABELS));s['display']['visibleColumns']=['name','category']
         self.assertEqual(self.client.put('/api/settings',json=s,headers=self.headers).status_code,200);self.assertEqual(self.state()['settings']['purchase_types'],['선물','중고'])
 
+    def test_shipping_cost_lifecycle(self):
+        ident=self.save(self.item(purchase_qty=6,current_qty=5,shipping_fee=6000)).json['id']
+        item=self.state()['items'][0]
+        self.assertEqual((item['total_purchase_cost'],item['avg_unit_price'],item['current_value'],item['deducted_value']),(306000,51000,255000,51000))
+        edit={**item,'purchase_qty':8,'current_qty':7,'purchase_price':400000,'shipping_fee':10000,'operations':[{'kind':'restock','quantity':2,'cost':100000,'shipping_fee':4000,'date':'2026-10-14'}]}
+        self.assertEqual(self.save(edit,ident).status_code,200)
+        item=self.state()['items'][0];self.assertEqual(item['total_purchase_cost'],410000);self.assertEqual([p['shipping_fee'] for p in item['purchases']],[6000,4000])
+        bad={**item,'shipping_fee':-1};self.assertEqual(self.save(bad,ident).status_code,400)
+        bad={**item,'shipping_fee':3000};self.assertEqual(self.save(bad,ident).status_code,400)
+        wb=load_workbook(io.BytesIO(self.client.get('/api/export').data));rows=list(wb['전체 상품'].values);record=dict(zip(rows[0],rows[1]));self.assertEqual(record['배송비'],10000);self.assertEqual(record['배송비 포함 구입금액'],410000)
+        self.assertIn('배송비',list(wb['구매 내역'].values)[0]);self.assertEqual(list(wb['금액 집계'].values)[4][2],410000)
+        backup=self.client.get('/api/backup').data
+        self.assertEqual(self.client.post('/api/restore',data={'backup':(io.BytesIO(backup),'backup.zip')},headers=self.headers).status_code,200)
+        item=self.state()['items'][0];self.assertEqual(item['shipping_fee'],10000)
+        undo={**item,'purchase_qty':6,'current_qty':5,'purchase_price':300000,'shipping_fee':6000,'operations':[{'kind':'undo_purchase','id':item['purchases'][1]['id']}]}
+        self.assertEqual(self.save(undo,ident).status_code,200);self.assertEqual(self.state()['items'][0]['total_purchase_cost'],306000)
+        r=self.client.post('/api/items/'+ident+'/restock',json={'updated_at':self.state()['items'][0]['updated_at'],'quantity':1,'cost':20000,'shipping_fee':3000},headers=self.headers)
+        self.assertEqual(r.status_code,200);self.assertEqual(self.state()['items'][0]['total_purchase_cost'],329000)
+        legacy=self.item();legacy.update(id='legacy',history=[])
+        self.assertEqual(ledger.stock_view(legacy)['shipping_fee'],0)
+
     def test_product_and_receipt_delete_then_readd_same_name(self):
         ident=self.save(self.item(),photos=2).json['id']
         for cycle in range(2):
@@ -130,7 +151,7 @@ class LedgerTest(unittest.TestCase):
         self.assertEqual(workbook['용품 입력']['B1'].value,'상품명')
         self.assertIsNone(workbook['용품 입력']['B2'].value)
         self.assertEqual(workbook['목록'].sheet_state,'hidden')
-        self.assertEqual(len(workbook['용품 입력'].data_validations.dataValidation),11)
+        self.assertEqual(len(workbook['용품 입력'].data_validations.dataValidation),12)
         self.assertEqual(self.excel_upload().status_code,400)
         rows=[['텐트','캠핑 텐트',datetime(2026,10,12),'온라인','나',310000,None,None,None,None,'동일 이름도 추가'],
               ['조명','랜턴','2026.10.13','직거래','캠퍼','₩35,000원','20,000','판매 완료','2026-10-13',None,None],

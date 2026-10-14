@@ -24,11 +24,11 @@ DEFAULT = {'categories':['부품','텐트','의자','테이블','소모품','기
 FIELDS = {'category':'구분','name':'상품명','purchase_date':'구입일자','method':'구매방식','buyer':'구매자','purchase_price':'구입가격','sale_price':'판매가격','status':'상태','sale_date':'판매일자','disposal_date':'폐기일자','notes':'메모'}
 FIELDS.update(purchase_qty='구매수량',current_qty='현재수량',sold_qty='판매수량')
 FIELDS.update(cost_unconfirmed='개별원가미확정',shared_purchase_total='공동구매금액')
-FIELDS.update(purchase_type='구매유형',brand='브랜드',purchase_url='구매 사이트 링크')
-PRICE_FIELDS=('purchase_price','sale_price','shared_purchase_total')
+FIELDS.update(purchase_type='구매유형',brand='브랜드',purchase_url='구매 사이트 링크',shipping_fee='배송비')
+PRICE_FIELDS=('purchase_price','sale_price','shared_purchase_total','shipping_fee')
 QTY_FIELDS=('purchase_qty','current_qty','sold_qty')
 STATUSES = {'owned':'보유','sold':'판매','disposed':'폐기'}
-DISPLAY_LABELS = {**FIELDS, 'photos':'사진','disposed_qty':'폐기·소진수량','avg_unit_price':'평균단가','current_value':'현재금액','deducted_value':'차감금액','owned_status':'보유 여부','sold_status':'판매 완료','disposed_status':'폐기·소진 여부','product_photo_count':'상품 사진 수','receipt_photo_count':'영수증 사진 수','created_at':'등록일시','updated_at':'수정일시'}
+DISPLAY_LABELS = {**FIELDS, 'total_purchase_cost':'배송비 포함 구입금액', 'photos':'사진','disposed_qty':'폐기·소진수량','avg_unit_price':'평균단가','current_value':'현재금액','deducted_value':'차감금액','owned_status':'보유 여부','sold_status':'판매 완료','disposed_status':'폐기·소진 여부','product_photo_count':'상품 사진 수','receipt_photo_count':'영수증 사진 수','created_at':'등록일시','updated_at':'수정일시'}
 for key in DISPLAY_LABELS:
     DEFAULT['display']['columns'].setdefault(key, {'font':14,'width':320 if key=='notes' else 160})
 DEFAULT['display'].update(visibleColumns=['category','name','purchase_price','sale_price'],
@@ -117,7 +117,8 @@ def valid_item(raw):
     return obj
 
 def stock_view(item):
-    item.setdefault('brand','');item.setdefault('purchase_url','')
+    item.setdefault('brand','');item.setdefault('purchase_url','');item.setdefault('shipping_fee',0)
+    item['total_purchase_cost']=item['purchase_price']+item['shipping_fee']
     item.setdefault('purchase_qty',1)
     item.setdefault('current_qty',item['purchase_qty'] if item['status']=='owned' else 0)
     item.setdefault('sold_qty',item['purchase_qty'] if item['status']=='sold' else 0)
@@ -127,13 +128,14 @@ def stock_view(item):
     item['sold_status']='판매 완료' if item['sold_qty']==item['purchase_qty'] else '일부 판매' if item['sold_qty'] else '미판매'
     item['disposed_status']='폐기·소진' if item['purchase_qty']>item['current_qty']+item['sold_qty'] else '없음'
     item['disposed_qty']=item['purchase_qty']-item['current_qty']-item['sold_qty']
-    item['avg_unit_price']=float((Decimal(item['purchase_price'])/item['purchase_qty']).quantize(Decimal('0.01'),rounding=ROUND_HALF_UP))
-    item['current_value']=int((Decimal(item['purchase_price'])*item['current_qty']/item['purchase_qty']).quantize(Decimal('1'),rounding=ROUND_HALF_UP))
-    item['deducted_value']=item['purchase_price']-item['current_value']
+    item['avg_unit_price']=float((Decimal(item['total_purchase_cost'])/item['purchase_qty']).quantize(Decimal('0.01'),rounding=ROUND_HALF_UP))
+    item['current_value']=int((Decimal(item['total_purchase_cost'])*item['current_qty']/item['purchase_qty']).quantize(Decimal('1'),rounding=ROUND_HALF_UP))
+    item['deducted_value']=item['total_purchase_cost']-item['current_value']
     if item['cost_unconfirmed']:
         for key in ('avg_unit_price','current_value','deducted_value'): item[key]=None
-    item.setdefault('purchases',[{'id':str(uuid.uuid5(uuid.NAMESPACE_URL,item['id']+'/initial')), 'date':item['purchase_date'],'quantity':item['purchase_qty'],'cost':item['purchase_price'],'notes':'최초 구매'}])
-    for purchase in item['purchases']: purchase.setdefault('purchase_type',item['purchase_type'])
+    item.setdefault('purchases',[{'id':str(uuid.uuid5(uuid.NAMESPACE_URL,item['id']+'/initial')), 'date':item['purchase_date'],'quantity':item['purchase_qty'],'cost':item['purchase_price'],'shipping_fee':item['shipping_fee'],'notes':'최초 구매'}])
+    for purchase in item['purchases']:
+        purchase.setdefault('purchase_type',item['purchase_type']);purchase.setdefault('shipping_fee',0)
     types={p['purchase_type'] for p in item['purchases']}
     if len(types)>1: item['purchase_type']='혼합'
     elif types: item['purchase_type']=next(iter(types))
@@ -141,12 +143,14 @@ def stock_view(item):
 
 def purchase_ledger(obj,old=None):
     purchases=json.loads(json.dumps(old['purchases'])) if old else []
-    if not purchases: purchases=[{'id':str(uuid.uuid4()),'date':obj['purchase_date'],'quantity':obj['purchase_qty'],'cost':obj['purchase_price'],'notes':'최초 구매','purchase_type':obj['purchase_type']}]
+    if not purchases: purchases=[{'id':str(uuid.uuid4()),'date':obj['purchase_date'],'quantity':obj['purchase_qty'],'cost':obj['purchase_price'],'shipping_fee':obj.get('shipping_fee',0),'notes':'최초 구매','purchase_type':obj['purchase_type']}]
     else:
         quantity=obj['purchase_qty']-sum(p['quantity'] for p in purchases[1:])
         cost=obj['purchase_price']-sum(p['cost'] for p in purchases[1:])
+        shipping=obj.get('shipping_fee',0)-sum(p.get('shipping_fee',0) for p in purchases[1:])
+        if shipping<0: raise InputError('누적 배송비가 추가 구매 배송비보다 작을 수 없습니다.','shipping_fee')
         if quantity<1 or cost<0: raise InputError('누적 구매수량·금액이 추가 구매 기록보다 작을 수 없습니다.','purchase_qty','purchase_price')
-        purchases[0].update(quantity=quantity,cost=cost,date=obj['purchase_date'])
+        purchases[0].update(quantity=quantity,cost=cost,shipping_fee=shipping,date=obj['purchase_date'])
         if obj['purchase_type']!='혼합': purchases[0]['purchase_type']=obj['purchase_type']
     return purchases
 
@@ -167,10 +171,12 @@ def edit_records(obj,old,operations,history,stamp):
             if kind=='restock':
                 pt=op.get('purchase_type') or '미기재'
                 if not isinstance(pt,str) or len(pt)>80: raise InputError('구매유형을 확인해주세요.','purchase_type')
-                entry.update(cost=cost,purchase_type=pt); purchases.append(entry)
+                shipping=op.get('shipping_fee',0)
+                if type(shipping) is not int or not 0<=shipping<=999999999999: raise InputError('배송비는 0 이상의 정수로 입력해주세요.','shipping_fee')
+                entry.update(cost=cost,shipping_fee=shipping,purchase_type=pt); purchases.append(entry)
             else:
-                entry['cost']=None if obj['cost_unconfirmed'] else round(obj['purchase_price']*q/obj['purchase_qty']);consumptions.append(entry)
-            history.append({'at':stamp,'changes':[{'field':'추가 구매' if kind=='restock' else '사용·소진','before':'','after':f'{q}개'+(f' / {cost:,}원' if kind=='restock' else '')+(' · '+notes if notes else '')}]})
+                entry['cost']=None if obj['cost_unconfirmed'] else round((obj['purchase_price']+obj['shipping_fee'])*q/obj['purchase_qty']);consumptions.append(entry)
+            history.append({'at':stamp,'changes':[{'field':'추가 구매' if kind=='restock' else '사용·소진','before':'','after':f'{q}개'+(f' / {cost:,}원 · 배송비 {shipping:,}원' if kind=='restock' else '')+(' · '+notes if notes else '')}]})
         elif kind in ('undo_purchase','undo_consume'):
             rows=purchases if kind=='undo_purchase' else consumptions
             matches=[(n,p) for n,p in enumerate(rows) if p['id']==op.get('id')]
@@ -287,7 +293,8 @@ def save(ident=None):
 @app.post('/api/items/<ident>/restock')
 def restock(ident):
     raw=request.get_json() or {}
-    quantity=raw.get('quantity'); cost=raw.get('cost'); purchased=raw.get('date','')
+    quantity=raw.get('quantity'); cost=raw.get('cost'); purchased=raw.get('date','');shipping=raw.get('shipping_fee',0)
+    if type(shipping) is not int or not 0<=shipping<=999999999999: raise InputError('배송비는 0 이상의 정수로 입력해주세요.','shipping_fee')
     if type(quantity) is not int or not 1<=quantity<=1000000000: raise ValueError('추가 구매수량을 확인해주세요.')
     if type(cost) is not int or not 0<=cost<=999999999999: raise ValueError('추가 구매금액을 확인해주세요.')
     if purchased: date.fromisoformat(purchased)
@@ -298,11 +305,11 @@ def restock(ident):
     with conn() as c:
         c.execute('BEGIN IMMEDIATE'); item=get_item(c,ident)
         if item['updated_at']!=raw.get('updated_at'): return jsonify(error='다른 화면에서 변경되었습니다. 다시 열어주세요.'),409
-        item['purchase_qty']+=quantity;item['current_qty']+=quantity;item['purchase_price']+=cost;item['status']='owned'
+        item['purchase_qty']+=quantity;item['current_qty']+=quantity;item['purchase_price']+=cost;item['shipping_fee']+=shipping;item['status']='owned'
         valid_item(item)
         stamp=now();item['updated_at']=stamp
-        item['purchases'].append({'id':str(uuid.uuid4()),'date':purchased,'quantity':quantity,'cost':cost,'notes':notes,'purchase_type':purchase_type})
-        item['history'].append({'at':stamp,'changes':[{'field':'추가 구매','before':'','after':f'{quantity}개 / {cost:,}원'+(' · '+notes if notes else '')}]})
+        item['purchases'].append({'id':str(uuid.uuid4()),'date':purchased,'quantity':quantity,'cost':cost,'shipping_fee':shipping,'notes':notes,'purchase_type':purchase_type})
+        item['history'].append({'at':stamp,'changes':[{'field':'추가 구매','before':'','after':f'{quantity}개 / {cost:,}원 · 배송비 {shipping:,}원'+(' · '+notes if notes else '')}]})
         for key in ('attachments','avg_unit_price','current_value','deducted_value','disposed_qty'): item.pop(key,None)
         c.execute('UPDATE items SET body=? WHERE id=?',(json.dumps(item,ensure_ascii=False),ident))
     return jsonify(ok=True)
@@ -325,8 +332,8 @@ def excel_value(v):
 @app.get('/api/export')
 def export():
     wb=Workbook(); ws=wb.active; ws.title='전체 상품'; hist=wb.create_sheet('변경 이력'); photos=wb.create_sheet('첨부 사진'); prefs=wb.create_sheet('설정'); summary=wb.create_sheet('금액 집계'); purchases_sheet=wb.create_sheet('구매 내역'); consumption_sheet=wb.create_sheet('사용·소진 내역')
-    ws.append(['ID']+list(FIELDS.values())+['폐기·소진수량','평균단가','현재금액','차감금액']+['사진 수','사진 파일명','등록 시각','수정 시각'])
-    purchases_sheet.append(['상품 ID','상품명','구매일자','구매수량','구입금액','개당가격','구매유형','메모'])
+    ws.append(['ID']+list(FIELDS.values())+['폐기·소진수량','평균단가','현재금액','차감금액','배송비 포함 구입금액']+['사진 수','사진 파일명','등록 시각','수정 시각'])
+    purchases_sheet.append(['상품 ID','상품명','구매일자','구매수량','구입금액','배송비','배송비 포함 금액','개당가격(배송비 포함)','구매유형','메모'])
     consumption_sheet.append(['상품 ID','상품명','사용일자','소진수량','소진금액','메모'])
     hist.append(['상품 ID','상품명','변경 시각','항목','변경 전','변경 후'])
     photos.append(['상품 ID','상품명','첨부 ID','파일명','형식','종류','사진'])
@@ -335,11 +342,11 @@ def export():
         items=[get_item(c,r[0]) for r in c.execute('SELECT id FROM items ORDER BY rowid').fetchall()]
         for it in items:
             vals=[STATUSES[it[k]] if k=='status' else ('미확정' if it[k] else '확정') if k=='cost_unconfirmed' else it[k] for k in FIELDS]
-            ws.append([excel_value(v) for v in [it['id']]+vals+[it['disposed_qty'],it['avg_unit_price'] if it['avg_unit_price'] is not None else '미확정',it['current_value'] if it['current_value'] is not None else '미확정',it['deducted_value'] if it['deducted_value'] is not None else '미확정']+[len(it['attachments']),', '.join(a['name'] for a in it['attachments']),it['created_at'],it['updated_at']]])
+            ws.append([excel_value(v) for v in [it['id']]+vals+[it['disposed_qty'],it['avg_unit_price'] if it['avg_unit_price'] is not None else '미확정',it['current_value'] if it['current_value'] is not None else '미확정',it['deducted_value'] if it['deducted_value'] is not None else '미확정',it['total_purchase_cost']]+[len(it['attachments']),', '.join(a['name'] for a in it['attachments']),it['created_at'],it['updated_at']]])
             for consumed in it['consumptions']:
                 consumption_sheet.append([excel_value(v) for v in [it['id'],it['name'],consumed['date'],consumed['quantity'],consumed.get('cost') if consumed.get('cost') is not None else '미확정',consumed['notes']]])
             for purchase in it['purchases']:
-                purchases_sheet.append([excel_value(v) for v in [it['id'],it['name'],purchase['date'],purchase['quantity'],purchase['cost'],round(purchase['cost']/purchase['quantity'],2) if not it['cost_unconfirmed'] else '미확정',purchase['purchase_type'],purchase['notes']]])
+                purchases_sheet.append([excel_value(v) for v in [it['id'],it['name'],purchase['date'],purchase['quantity'],purchase['cost'],purchase.get('shipping_fee',0),purchase['cost']+purchase.get('shipping_fee',0),round((purchase['cost']+purchase.get('shipping_fee',0))/purchase['quantity'],2) if not it['cost_unconfirmed'] else '미확정',purchase['purchase_type'],purchase['notes']]])
             for event in it['history']:
                 for ch in event['changes']: hist.append([excel_value(v) for v in [it['id'],it['name'],event['at'],ch['field'],ch['before'],ch['after']]])
             for a in c.execute('SELECT * FROM attachments WHERE item_id=?',(it['id'],)):
@@ -353,7 +360,7 @@ def export():
     summary.append(['상태','수량','구입 합계','실제 판매 합계','순지출'])
     for status,label in list(STATUSES.items())+[('all','전체')]:
         group=[it for it in items if status=='all' or (it['current_qty']>0 if status=='owned' else it['sold_qty']>0 if status=='sold' else it['disposed_qty']>0)]
-        p=sum(it['purchase_price'] for it in group); sale=sum(it['sale_price'] for it in group if it['sold_qty']>0)
+        p=sum(it['total_purchase_cost'] for it in group); sale=sum(it['sale_price'] for it in group if it['sold_qty']>0)
         summary.append([label,len(group),p,sale,p-sale])
     summary.append(['현재 보유 원가(확정분)',None,sum(it['current_value'] or 0 for it in items),None,None])
     summary.append(['개별 원가 미확정 품목',sum(it['cost_unconfirmed'] for it in items),None,None,None])
@@ -409,7 +416,7 @@ def import_template():
         col=get_column_letter(list(FIELDS).index(key)+1)
         dv=DataValidation(type='whole',operator='between',formula1=1 if key=='purchase_qty' else 0,formula2=1000000000,allow_blank=True)
         dv.showErrorMessage=True;dv.error='수량은 정수로 입력해주세요.';ws.add_data_validation(dv);dv.add(f'{col}2:{col}20001')
-    for col in ('F','G',get_column_letter(list(FIELDS).index('shared_purchase_total')+1)):
+    for col in [get_column_letter(list(FIELDS).index(key)+1) for key in PRICE_FIELDS]:
         dv=DataValidation(type='whole',operator='between',formula1=0,formula2=999999999999,allow_blank=True)
         dv.showErrorMessage=True; dv.error='금액은 0 이상의 원 단위 정수로 입력해주세요.'
         ws.add_data_validation(dv); dv.add(f'{col}2:{col}20001')
@@ -515,7 +522,7 @@ def preview_import():
                 except ValueError as exc: errors.append({'row':number,'field':'수량·입력값','message':str(exc)})
         if not rows and not errors: raise ValueError('추가할 상품이 없습니다. 양식의 2행부터 내용을 작성해주세요.')
         result={'ok':not bool(errors),'count':len(rows),'errors':errors[:100],'error_count':len(errors),'preview':rows[:50],
-                'purchase_total':sum(r['item']['purchase_price'] for r in rows),
+                'purchase_total':sum(r['item']['purchase_price']+r['item']['shipping_fee'] for r in rows),
                 'sale_total':sum(r['item']['sale_price'] for r in rows if r['item']['sold_qty']>0)}
         if not errors:
             token=str(uuid.uuid4())
@@ -589,8 +596,9 @@ def restore():
             for purchase in it['purchases']:
                 if type(purchase.get('quantity')) is not int or purchase['quantity']<1 or type(purchase.get('cost')) is not int or purchase['cost']<0 or not isinstance(purchase.get('notes'),str): raise ValueError('구매 내역 형식을 확인해주세요.')
                 if purchase.get('date'): date.fromisoformat(purchase['date'])
-                purchase.setdefault('purchase_type','미기재')
-            if sum(p['quantity'] for p in it['purchases'])!=it['purchase_qty'] or sum(p['cost'] for p in it['purchases'])!=it['purchase_price']: raise ValueError('구매 내역과 누적 수량·금액이 일치하지 않습니다.')
+                purchase.setdefault('purchase_type','미기재');purchase.setdefault('shipping_fee',0)
+                if type(purchase['shipping_fee']) is not int or not 0<=purchase['shipping_fee']<=999999999999: raise ValueError('배송비 형식을 확인해주세요.')
+            if sum(p['quantity'] for p in it['purchases'])!=it['purchase_qty'] or sum(p['cost'] for p in it['purchases'])!=it['purchase_price'] or sum(p['shipping_fee'] for p in it['purchases'])!=it['shipping_fee']: raise ValueError('구매 내역과 누적 수량·금액이 일치하지 않습니다.')
             attachments=[]
             for a in raw['attachments']:
                 aid=str(uuid.UUID(a['id']))
