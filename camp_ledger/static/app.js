@@ -126,4 +126,4 @@ window.additionalPurchaseCost=()=>activeRecords().purchases.slice(1).reduce((sum
 
 $('#scroll-top').onclick=()=>window.scrollTo({top:0,behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
 
-(()=>{const button=$('#scroll-top');const update=()=>{button.disabled=(window.scrollY||document.scrollingElement?.scrollTop||0)<120;};window.addEventListener('scroll',update,{passive:true});window.addEventListener('pageshow',update);update();})();
+(()=>{const button=$('#scroll-top');const update=()=>{button.hidden=(window.scrollY||document.scrollingElement?.scrollTop||0)<120;};window.addEventListener('scroll',update,{passive:true});window.addEventListener('pageshow',update);update();})();

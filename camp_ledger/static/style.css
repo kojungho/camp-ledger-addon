@@ -56,4 +56,4 @@ dialog{position:fixed;inset-inline:0;top:var(--popup-top,12px);bottom:auto;margi
 
 .purchase-url-input{position:relative;min-width:0}.purchase-url-input input{width:100%;padding-right:46px}.purchase-url-input #purchase-url-open{position:absolute;right:8px;top:50%;transform:translateY(-50%);margin:0;width:30px;height:30px;padding:5px;text-decoration:none}.purchase-url-input #purchase-url-open[hidden]{display:none}
 
-.scroll-top:disabled,.scroll-top:disabled:hover{background:#d8dfd5;color:#899587;border-color:#e5eae2;box-shadow:none;opacity:.65;cursor:default}
+.scroll-top[hidden]{display:none}
