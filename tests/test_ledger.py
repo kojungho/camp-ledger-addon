@@ -57,6 +57,16 @@ class LedgerTest(unittest.TestCase):
             for attachment in restored['attachments']:self.assertEqual(self.client.get('/api/photos/'+attachment['id']).status_code,200)
             for aid in deleted:self.assertEqual(self.client.get('/api/photos/'+aid).status_code,404)
 
+    def test_brand_link_and_mobile_preferences(self):
+        ident=self.save(self.item(brand='네이처하이크',purchase_url='https://example.com/item?ref=camp')).json['id']
+        saved=self.state()['items'][0];self.assertEqual(saved['brand'],'네이처하이크');self.assertEqual(saved['purchase_url'],'https://example.com/item?ref=camp')
+        bad={**saved,'purchase_url':'javascript:alert(1)'};r=self.save(bad,ident);self.assertEqual(r.status_code,400);self.assertEqual(r.json['fields'],['purchase_url'])
+        wb=load_workbook(io.BytesIO(self.client.get('/api/export').data));self.assertIn('브랜드',[c.value for c in wb['전체 상품'][1]]);self.assertIn('구매 사이트 링크',[c.value for c in wb['전체 상품'][1]])
+        s=self.state()['settings'];self.assertFalse(s['display']['rememberDialogScroll']);self.assertEqual(s['display']['mobileColumns'],2)
+        s['display'].update(mobileColumns=6,rememberDialogScroll=True);self.assertEqual(self.client.put('/api/settings',json=s,headers=self.headers).status_code,200)
+        s['display']['mobileColumns']=7;self.assertEqual(self.client.put('/api/settings',json=s,headers=self.headers).status_code,400)
+        self.assertEqual(self.state()['settings']['display']['mobileColumns'],6)
+
     def test_full_lifecycle_and_export(self):
         r=self.save(self.item(),photos=12);self.assertEqual(r.status_code,200)
         first=self.state()['items'][0];self.assertEqual(len(first['attachments']),12);self.assertEqual(sum(a['kind']=='receipt' for a in first['attachments']),6)

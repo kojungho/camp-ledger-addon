@@ -1,5 +1,6 @@
 import io, json, os, sqlite3, uuid, zipfile, time, math
 from datetime import date, datetime
+from urllib.parse import urlsplit
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from flask import Flask, request, jsonify, send_file, abort
@@ -23,7 +24,7 @@ DEFAULT = {'categories':['부품','텐트','의자','테이블','소모품','기
 FIELDS = {'category':'구분','name':'상품명','purchase_date':'구입일자','method':'구매방식','buyer':'구매자','purchase_price':'구입가격','sale_price':'판매가격','status':'상태','sale_date':'판매일자','disposal_date':'폐기일자','notes':'메모'}
 FIELDS.update(purchase_qty='구매수량',current_qty='현재수량',sold_qty='판매수량')
 FIELDS.update(cost_unconfirmed='개별원가미확정',shared_purchase_total='공동구매금액')
-FIELDS.update(purchase_type='구매유형')
+FIELDS.update(purchase_type='구매유형',brand='브랜드',purchase_url='구매 사이트 링크')
 PRICE_FIELDS=('purchase_price','sale_price','shared_purchase_total')
 QTY_FIELDS=('purchase_qty','current_qty','sold_qty')
 STATUSES = {'owned':'보유','sold':'판매','disposed':'폐기'}
@@ -31,12 +32,12 @@ DISPLAY_LABELS = {**FIELDS, 'photos':'사진','disposed_qty':'폐기·소진수�
 for key in DISPLAY_LABELS:
     DEFAULT['display']['columns'].setdefault(key, {'font':14,'width':320 if key=='notes' else 160})
 DEFAULT['display'].update(visibleColumns=['category','name','purchase_price','sale_price'],
-                          visibleSummaries=['purchase','sale','net','owned'],showProductThumb=True)
+                          visibleSummaries=['purchase','sale','net','owned'],showProductThumb=True,mobileColumns=2,rememberDialogScroll=False)
 
 def normalize_settings(s):
     s.setdefault('purchase_types',['미기재','새상품','중고'])
     d=s.setdefault('display',{})
-    for key in ('visibleColumns','visibleSummaries','showProductThumb'):
+    for key in ('visibleColumns','visibleSummaries','showProductThumb','mobileColumns','rememberDialogScroll'):
         if key not in d: d[key]=list(DEFAULT['display'][key]) if isinstance(DEFAULT['display'][key],list) else DEFAULT['display'][key]
     if 'columnOrder' in d:
         d['columnOrder']=[k for k in d['columnOrder'] if k in DISPLAY_LABELS]+[k for k in DISPLAY_LABELS if k not in d['columnOrder']]
@@ -80,6 +81,10 @@ def valid_item(raw):
     obj['purchase_type']=raw.get('purchase_type') or '미기재'
     for k in FIELDS:
         if k not in (*PRICE_FIELDS,*QTY_FIELDS,'cost_unconfirmed') and not isinstance(obj[k],str): raise ValueError('입력 형식을 확인해주세요.')
+    obj['brand']=obj['brand'].strip();obj['purchase_url']=obj['purchase_url'].strip()
+    if obj['purchase_url']:
+        url=urlsplit(obj['purchase_url'])
+        if url.scheme not in ('http','https') or not url.hostname or url.username or url.password: raise InputError('구매 사이트 링크는 http:// 또는 https:// 주소로 입력해주세요.','purchase_url')
     obj['name']=obj['name'].strip()
     if not obj['name']: raise InputError('상품명을 입력해주세요.','name')
     if obj['status'] not in STATUSES: raise ValueError('상태를 확인해주세요.')
@@ -112,6 +117,7 @@ def valid_item(raw):
     return obj
 
 def stock_view(item):
+    item.setdefault('brand','');item.setdefault('purchase_url','')
     item.setdefault('purchase_qty',1)
     item.setdefault('current_qty',item['purchase_qty'] if item['status']=='owned' else 0)
     item.setdefault('sold_qty',item['purchase_qty'] if item['status']=='sold' else 0)
@@ -192,6 +198,8 @@ def valid_settings(s):
         values=d[key]
         if not isinstance(values,list) or any(not isinstance(v,str) or v not in allowed for v in values) or len(set(values))!=len(values): raise ValueError('메인 화면 표시 항목을 확인해주세요.')
     if not d['visibleColumns']: raise ValueError('목록에 표시할 항목을 하나 이상 선택해주세요.')
+    if type(d['mobileColumns']) is not int or not 2<=d['mobileColumns']<=6: raise ValueError('모바일 한 줄 항목 수는 2~6개입니다.')
+    if type(d['rememberDialogScroll']) is not bool: raise ValueError('팝업 스크롤 기억 설정을 확인해주세요.')
     if type(d['showProductThumb']) is not bool: raise ValueError('대표 사진 표시 설정을 확인해주세요.')
     return s
 
