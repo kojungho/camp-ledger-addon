@@ -2,7 +2,7 @@
 (()=>{
 const dialog=document.getElementById('item-dialog'),form=document.getElementById('item-form');
 const key='camp-ledger-item-draft-v1',fallbackKey=key+'-picker';
-let queue=Promise.resolve(),restored=false,restoring=false,pickerTimer=0,lastFiles='',warned=false;
+let queue=Promise.resolve(),restored=false,restoring=false,pickerTimer=0,lastFiles='',warned=false,intentionalClose=false,returnUntil=0;
 function read(storage,k){try{return JSON.parse(storage.getItem(k)||'null')}catch{return null}}
 const fallback=read(localStorage,fallbackKey);
 let recovery=read(sessionStorage,key)||(fallback&&Date.now()-fallback.at<300000?fallback:null);
@@ -15,17 +15,18 @@ function snapshot(){const values={};for(const input of form.querySelectorAll('[n
 return{at:Date.now(),storageId,current,values,disposed:document.getElementById('disposed-check').checked,deleted:[...deleted],operations,dirty,picker:!!window.photoPickerActive,scroll:dialog.querySelector('.modal-body').scrollTop,files:files.map(f=>({name:f.file.name,kind:f.kind,size:f.file.size}))};}
 function persist(){if(restoring||!dialog.open)return;const draft=snapshot();try{sessionStorage.setItem(key,JSON.stringify(draft));if(pickerRecovery)localStorage.setItem(fallbackKey,JSON.stringify(draft))}catch{}
 const signature=files.map(f=>f.url).join('|');if(signature===lastFiles)return;lastFiles=signature;const saved=files.map(f=>({file:f.file,kind:f.kind}));queue=queue.catch(()=>{}).then(()=>photoStore('readwrite',store=>store.put(saved,storageId))).catch(()=>{if(!warned&&saved.length){warned=true;toast('사진 임시 보관이 어려워요. 화면이 다시 열리면 사진을 다시 선택해주세요.')}});}
-window.persistItemDraft=persist;
-window.clearItemDraft=()=>{recovery=null;lastFiles='';try{sessionStorage.removeItem(key);if(read(localStorage,fallbackKey)?.storageId===storageId)localStorage.removeItem(fallbackKey)}catch{}queue=queue.catch(()=>{}).then(()=>photoStore('readwrite',store=>store.delete(storageId))).catch(()=>{});};
-function finishPicker(){clearTimeout(pickerTimer);window.photoPickerActive=false;persist();window.dispatchEvent(new Event('resize'));}
-form.addEventListener('click',e=>{if(!e.target.matches('#photos,#receipts'))return;clearTimeout(pickerTimer);window.photoPickerActive=true;pickerRecovery=true;persist();},true);
+window.persistItemDraft=persist;window.beginItemDraft=()=>{intentionalClose=false;returnUntil=0;};
+window.clearItemDraft=()=>{intentionalClose=true;pickerRecovery=false;window.photoPickerActive=false;clearTimeout(pickerTimer);recovery=null;lastFiles='';try{sessionStorage.removeItem(key);if(read(localStorage,fallbackKey)?.storageId===storageId)localStorage.removeItem(fallbackKey)}catch{}queue=queue.catch(()=>{}).then(()=>photoStore('readwrite',store=>store.delete(storageId))).catch(()=>{});};
+function ensurePopup(){if(intentionalClose||(!window.photoPickerActive&&Date.now()>returnUntil&&!(pickerRecovery&&dirty)))return;if(!dialog.open){const body=dialog.querySelector('.modal-body'),position=body.scrollTop;dialog.showModal();document.getElementById('save-item').focus({preventScroll:true});body.scrollTop=position;window.dispatchEvent(new Event('resize'));}persist();}
+function finishPicker(){clearTimeout(pickerTimer);returnUntil=Date.now()+2500;ensurePopup();persist();pickerTimer=setTimeout(()=>{window.photoPickerActive=false;ensurePopup();persist();},2500);window.dispatchEvent(new Event('resize'));}
+form.addEventListener('click',e=>{if(!e.target.matches('#photos,#receipts')&&!e.target.closest('[data-photo-picker]'))return;clearTimeout(pickerTimer);window.photoPickerActive=true;pickerRecovery=true;persist();},true);
 form.addEventListener('cancel',e=>{if(e.target.matches('#photos,#receipts'))finishPicker();},true);
 form.addEventListener('change',e=>{if(e.target.matches('#photos,#receipts'))finishPicker();else persist();});form.addEventListener('input',persist);
 form.addEventListener('click',()=>setTimeout(persist,0));
-window.addEventListener('focus',()=>{if(window.photoPickerActive)pickerTimer=setTimeout(finishPicker,1500)});
-document.addEventListener('visibilitychange',()=>{if(document.hidden)persist();else if(window.photoPickerActive)pickerTimer=setTimeout(finishPicker,1500)});
+window.addEventListener('focus',()=>{ensurePopup();if(window.photoPickerActive)pickerTimer=setTimeout(finishPicker,1500)});
+document.addEventListener('visibilitychange',()=>{clearTimeout(pickerTimer);if(document.hidden)persist();else{ensurePopup();if(window.photoPickerActive)pickerTimer=setTimeout(finishPicker,1500)}});
 window.addEventListener('pagehide',persist);
-dialog.addEventListener('close',()=>{if(window.photoPickerActive){queueMicrotask(()=>{if(!dialog.open)dialog.showModal()});}});
+dialog.addEventListener('close',()=>queueMicrotask(ensurePopup));dialog.addEventListener('toggle',()=>{if(!dialog.open)queueMicrotask(ensurePopup);});
 async function restore(){if(restored||restoring||!state.settings)return;restored=true;if(!recovery){window.itemDraftRestoring=false;return;}if(Date.now()-recovery.at>86400000){window.clearItemDraft();window.itemDraftRestoring=false;return;}if(dialog.open){window.itemDraftRestoring=false;return;}restoring=true;const draft=recovery;
 try{let saved=[];try{saved=await photoStore('readonly',store=>store.get(storageId))||[]}catch{}
 openItem(draft.current?.id);current=draft.current||null;
