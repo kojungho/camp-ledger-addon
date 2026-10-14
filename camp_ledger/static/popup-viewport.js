@@ -1,0 +1,8 @@
+"use strict";
+(()=>{const viewport=window.visualViewport;let frame=0;
+function keepInputVisible(){const input=document.activeElement;if(!input?.matches('input:not([type=hidden]),textarea,select')||!input.closest('dialog[open]'))return;const dialog=input.closest('dialog'),scroller=input.closest('.modal-body')||input.closest('form')||dialog;const rect=input.getBoundingClientRect(),bounds=scroller.getBoundingClientRect(),top=Math.max(bounds.top,(viewport?.offsetTop||0))+12,bottom=Math.min(bounds.bottom,(viewport?.offsetTop||0)+(viewport?.height||window.innerHeight))-12;
+if(rect.height>bottom-top){if(rect.top<top||rect.top>bottom)scroller.scrollTop+=rect.top-top;}else if(rect.bottom>bottom)scroller.scrollTop+=rect.bottom-bottom;else if(rect.top<top)scroller.scrollTop-=top-rect.top;}
+function update(){frame=0;const height=viewport?.height||window.innerHeight,offset=viewport?.offsetTop||0;document.documentElement.style.setProperty('--popup-viewport-height',height+'px');for(const dialog of document.querySelectorAll('dialog[open]')){if(dialog.id==='calendar-dialog')continue;const h=dialog.getBoundingClientRect().height;dialog.style.setProperty('--popup-top',(offset+Math.max(12,(height-h)/2))+'px');}keepInputVisible();}
+function schedule(){if(!frame)frame=requestAnimationFrame(update);}
+viewport?.addEventListener('resize',schedule);viewport?.addEventListener('scroll',schedule);window.addEventListener('resize',schedule);document.addEventListener('focusin',()=>{schedule();setTimeout(schedule,120);setTimeout(schedule,300);});document.querySelectorAll('dialog').forEach(d=>d.addEventListener('toggle',schedule));update();
+})();
