@@ -1,5 +1,5 @@
 name: 캠핑용품 장부
-version: "1.0.31"
+version: "1.0.32"
 slug: camp_ledger
 description: 캠핑용품 구매·판매·폐기, 사진, 변경 이력 및 엑셀 장부
 arch:
