@@ -33,3 +33,5 @@
 @media(max-width:760px){.mobile-gear-card{padding:var(--mobile-cardPadding,12px)}.mobile-card-fields{gap:var(--mobile-fieldGap,12px) var(--mobile-columnGap,12px)}.mobile-field>div{margin-top:var(--mobile-labelGap,3px)}.mobile-field>span{margin:0}.mobile-field .purchase-site-button{padding:5px}.mobile-field>div .product-name{justify-content:flex-start}}
 
 .search input{flex:1;min-width:0}.search #search-clear{flex:none;display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;margin-right:6px;padding:0;border-radius:50%;font-size:22px;line-height:1;color:#809176}.search #search-clear:hover{background:#e8efdf;color:#285345}
+
+@media(max-width:760px){.mobile-field .purchase-site-button{width:var(--mobile-linkSize,30px);height:var(--mobile-linkSize,30px);padding:4px}.mobile-field .purchase-site-button svg{width:calc(var(--mobile-linkSize,30px) - 8px);height:calc(var(--mobile-linkSize,30px) - 8px)}}

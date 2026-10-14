@@ -36,7 +36,7 @@ for key in DISPLAY_LABELS:
 DEFAULT['display'].update(visibleColumns=['category','name','purchase_price','sale_price'],
                           visibleSummaries=['purchase','sale','net','owned'],showProductThumb=True,mobileColumns=2,rememberDialogScroll=False,cellVerticalPadding=12,bodyWeight=400,headerWeight=500,titleWeight=700,detailWeight=400)
 
-DEFAULT['display']['mobile']={'font':13,'headerFont':10,'bodyWeight':400,'headerWeight':400,'cellPadding':0,'cellVerticalPadding':0,'rowHeight':0,'headerHeight':0,'headerPadding':0,'cardPadding':12,'fieldGap':12,'columnGap':12,'labelGap':3,'columns':{}}
+DEFAULT['display']['mobile']={'font':13,'headerFont':10,'bodyWeight':400,'headerWeight':400,'cellPadding':0,'cellVerticalPadding':0,'rowHeight':0,'headerHeight':0,'headerPadding':0,'cardPadding':12,'fieldGap':12,'columnGap':12,'labelGap':3,'linkSize':30,'columns':{}}
 
 def normalize_settings(s):
     s.setdefault('purchase_types',['미기재','새상품','중고'])
@@ -240,7 +240,7 @@ def valid_settings(s):
             if col.get(prop) is not None and (type(col[prop]) is not int or not low<=col[prop]<=high): raise ValueError('항목별 화면 설정 범위를 확인해주세요.')
         if type(col.get('auto',False)) is not bool: raise ValueError('자동 너비 설정을 확인해주세요.')
     mobile=d['mobile']
-    mobile_limits={'font':(10,30),'headerFont':(8,30),'bodyWeight':(100,900),'headerWeight':(100,900),'cellPadding':(0,60),'cellVerticalPadding':(0,60),'rowHeight':(0,200),'headerHeight':(0,120),'headerPadding':(0,40),'cardPadding':(0,40),'fieldGap':(0,60),'columnGap':(0,60),'labelGap':(0,40)}
+    mobile_limits={'font':(10,30),'headerFont':(8,30),'bodyWeight':(100,900),'headerWeight':(100,900),'cellPadding':(0,60),'cellVerticalPadding':(0,60),'rowHeight':(0,200),'headerHeight':(0,120),'headerPadding':(0,40),'cardPadding':(0,40),'fieldGap':(0,60),'columnGap':(0,60),'labelGap':(0,40),'linkSize':(20,64)}
     for key,(low,high) in mobile_limits.items():
         if type(mobile[key]) is not int or not low<=mobile[key]<=high:raise ValueError('모바일 화면 설정 범위를 확인해주세요.')
     if not isinstance(mobile['columns'],dict) or any(k not in DISPLAY_LABELS for k in mobile['columns']):raise ValueError('모바일 항목 설정을 확인해주세요.')
