@@ -20,7 +20,7 @@ app.config.update(MAX_FORM_PARTS=None, MAX_FORM_MEMORY_SIZE=None)
 DATA = Path(os.environ.get('CAMP_DATA', '/data/camp-ledger'))
 DATA.mkdir(parents=True, exist_ok=True)
 DB = DATA / 'ledger.sqlite3'
-DEFAULT = {'categories':['부품','텐트','의자','테이블','소모품','기타'], 'methods':['온라인','오프라인'], 'buyers':['나','가족'], 'display': {'rowHeight':72,'headerHeight':48,'cellPadding':20,'detailFont':15,'titleFont':32,'columns':{'category':{'font':14,'width':130},'name':{'font':16,'width':360},'purchase_price':{'font':16,'width':165},'sale_price':{'font':16,'width':165}}}}
+DEFAULT = {'categories':['부품','텐트','의자','테이블','소모품','기타'], 'methods':['온라인','오프라인'], 'buyers':['나','가족'], 'display': {'rowHeight':72,'headerHeight':48,'headerFont':12,'headerPadding':10,'cellPadding':20,'detailFont':15,'titleFont':32,'columns':{'category':{'font':14,'width':130},'name':{'font':16,'width':360},'purchase_price':{'font':16,'width':165},'sale_price':{'font':16,'width':165}}}}
 FIELDS = {'category':'구분','name':'상품명','purchase_date':'구입일자','method':'구매방식','buyer':'구매자','purchase_price':'구입가격','sale_price':'판매가격','status':'상태','sale_date':'판매일자','disposal_date':'폐기일자','notes':'메모'}
 FIELDS.update(purchase_qty='구매수량',current_qty='현재수량',sold_qty='판매수량')
 FIELDS.update(cost_unconfirmed='개별원가미확정',shared_purchase_total='공동구매금액')
@@ -32,12 +32,12 @@ DISPLAY_LABELS = {**FIELDS, 'total_purchase_cost':'배송비 포함 구입금액
 for key in DISPLAY_LABELS:
     DEFAULT['display']['columns'].setdefault(key, {'font':14,'width':320 if key=='notes' else 160})
 DEFAULT['display'].update(visibleColumns=['category','name','purchase_price','sale_price'],
-                          visibleSummaries=['purchase','sale','net','owned'],showProductThumb=True,mobileColumns=2,rememberDialogScroll=False)
+                          visibleSummaries=['purchase','sale','net','owned'],showProductThumb=True,mobileColumns=2,rememberDialogScroll=False,cellVerticalPadding=12,bodyWeight=400,headerWeight=500,titleWeight=700,detailWeight=400)
 
 def normalize_settings(s):
     s.setdefault('purchase_types',['미기재','새상품','중고'])
     d=s.setdefault('display',{})
-    for key in ('visibleColumns','visibleSummaries','showProductThumb','mobileColumns','rememberDialogScroll'):
+    for key in ('visibleColumns','visibleSummaries','showProductThumb','mobileColumns','rememberDialogScroll','headerFont','headerPadding','bodyWeight','headerWeight','titleWeight','detailWeight','cellVerticalPadding'):
         if key not in d: d[key]=list(DEFAULT['display'][key]) if isinstance(DEFAULT['display'][key],list) else DEFAULT['display'][key]
     if 'columnOrder' in d:
         d['columnOrder']=[k for k in d['columnOrder'] if k in DISPLAY_LABELS]+[k for k in DISPLAY_LABELS if k not in d['columnOrder']]
@@ -191,12 +191,14 @@ def valid_settings(s):
     for key in ('categories','methods','buyers','purchase_types'):
         if not isinstance(s.get(key),list) or any(not isinstance(x,str) or not x.strip() for x in s[key]) or len(set(s[key]))!=len(s[key]): raise ValueError('목록 값을 확인해주세요.')
     d=s['display']
-    limits={'rowHeight':(40,200),'headerHeight':(32,120),'cellPadding':(0,60),'detailFont':(12,30),'titleFont':(20,48)}
+    limits={'cellVerticalPadding':(0,60),'rowHeight':(24,200),'bodyWeight':(100,900),'headerWeight':(100,900),'titleWeight':(100,900),'detailWeight':(100,900),'headerHeight':(20,120),'headerFont':(10,30),'headerPadding':(0,40),'cellPadding':(0,60),'detailFont':(12,30),'titleFont':(20,48)}
     for k,(low,high) in limits.items():
         if type(d.get(k)) is not int or not low<=d[k]<=high: raise ValueError('화면 크기 설정이 범위를 벗어났습니다.')
     for key in DISPLAY_LABELS:
         col=d['columns'][key]
         if type(col['font']) is not int or not 12<=col['font']<=30 or type(col['width']) is not int or not 24<=col['width']<=1600: raise ValueError('열 설정을 확인해주세요.')
+        for prop,(low,high) in {'fontWeight':(100,900),'headerWeight':(100,900),'headerFont':(10,30),'padding':(0,60),'verticalPadding':(0,60),'rowHeight':(24,200),'headerPadding':(0,40),'headerHeight':(20,120)}.items():
+            if col.get(prop) is not None and (type(col[prop]) is not int or not low<=col[prop]<=high): raise ValueError('항목별 화면 설정 범위를 확인해주세요.')
         if type(col.get('auto',False)) is not bool: raise ValueError('자동 너비 설정을 확인해주세요.')
     order=d.setdefault('columnOrder',list(DISPLAY_LABELS))
     if not isinstance(order,list) or len(order)!=len(DISPLAY_LABELS) or set(order)!=set(DISPLAY_LABELS): raise ValueError('표시 순서를 확인해주세요.')

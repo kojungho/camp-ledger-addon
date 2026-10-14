@@ -43,6 +43,17 @@ class LedgerTest(unittest.TestCase):
         s=self.state()['settings'];s['purchase_types']=['선물','중고'];s['display']['cellPadding']=0;s['display']['columns']['name'].update(width=24,auto=True);s['display']['columnOrder']=list(reversed(ledger.DISPLAY_LABELS));s['display']['visibleColumns']=['name','category']
         self.assertEqual(self.client.put('/api/settings',json=s,headers=self.headers).status_code,200);self.assertEqual(self.state()['settings']['purchase_types'],['선물','중고'])
 
+    def test_fine_display_preferences(self):
+        s=self.state()['settings'];d=s['display'];self.assertEqual(d['headerFont'],12);self.assertEqual(d['bodyWeight'],400)
+        d.update(headerFont=18,headerPadding=0,headerHeight=28,bodyWeight=600,cellVerticalPadding=0)
+        d['columns']['brand'].update(fontWeight=700,headerFont=20,headerWeight=800,padding=0,verticalPadding=2,rowHeight=26,headerPadding=1,headerHeight=24)
+        self.assertEqual(self.client.put('/api/settings',json=s,headers=self.headers).status_code,200)
+        saved=self.state()['settings'];self.assertEqual(saved['display']['columns']['brand']['fontWeight'],700)
+        saved['display']['columns']['brand']['fontWeight']=1000
+        self.assertEqual(self.client.put('/api/settings',json=saved,headers=self.headers).status_code,400)
+        saved['display']['columns']['brand']['fontWeight']=None
+        self.assertEqual(self.client.put('/api/settings',json=saved,headers=self.headers).status_code,200)
+
     def test_shipping_cost_lifecycle(self):
         ident=self.save(self.item(purchase_qty=6,current_qty=5,shipping_fee=6000)).json['id']
         item=self.state()['items'][0]
