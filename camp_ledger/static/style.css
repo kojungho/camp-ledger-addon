@@ -57,3 +57,5 @@ dialog{position:fixed;inset-inline:0;top:var(--popup-top,12px);bottom:auto;margi
 .purchase-url-input{position:relative;min-width:0}.purchase-url-input input{width:100%;padding-right:46px}.purchase-url-input #purchase-url-open{position:absolute;right:8px;top:50%;transform:translateY(-50%);margin:0;width:30px;height:30px;padding:5px;text-decoration:none}.purchase-url-input #purchase-url-open[hidden]{display:none}
 
 .scroll-top[hidden]{display:none}
+
+.display-setting-tabs{display:inline-flex;gap:4px;padding:5px;background:#edf1e9;border-radius:15px;margin-top:24px}.display-setting-tabs button{min-width:100px;padding:12px 20px;color:#285345;font-size:15px;border-radius:11px;font-weight:600}.display-setting-tabs button[aria-selected="true"]{background:#fff;box-shadow:0 3px 12px #294c3910}.display-setting-tabs button:focus-visible{outline:2px solid #789a68;outline-offset:1px}#pc-display-settings[hidden],#mobile-display-settings[hidden]{display:none}#pc-display-settings>.settings-heading,#mobile-display-settings>.settings-heading{margin-top:20px}
