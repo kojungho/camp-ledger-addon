@@ -68,3 +68,12 @@ class ListPreferencesTest(unittest.TestCase):
   for invalid in (19,201,True,'80'):
    s['display_mobile']['layout_size']=invalid
    self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,400)
+
+ def test_default_sort_saved_for_both_apps(self):
+  for app,path in [(journal,'journal'),(ledger.app,'ledger')]:
+   client=app.test_client();settings=client.get('/api/state').json['settings'];target=settings if path=='journal' else settings['display'];key='default_sort' if path=='journal' else 'defaultSort';field='checkin' if path=='journal' else 'purchase_date'
+   target[key]={'key':field,'direction':'desc'}
+   self.assertEqual(client.put('/api/settings',json=settings,headers=self.h).status_code,200)
+   saved=client.get('/api/state').json['settings'];saved=saved if path=='journal' else saved['display'];self.assertEqual(saved[key],target[key])
+   for invalid in [{'key':'unknown','direction':'asc'},{'key':field,'direction':'sideways'},None,{'key':field},'name']:
+    target[key]=invalid;self.assertEqual(client.put('/api/settings',json=settings,headers=self.h).status_code,400)

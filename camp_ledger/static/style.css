@@ -78,3 +78,5 @@ body[data-camp-hub="1"] #settings,body[data-camp-hub="1"] #install,body[data-cam
 @media(max-width:760px){.sidebar>nav{display:none}}
 
 #main-display-settings .display-checks:has(.display-name-row){grid-template-columns:repeat(2,minmax(0,1fr))}.display-name-row{display:grid;grid-template-columns:26px minmax(70px,1fr) minmax(70px,1fr);align-items:center;gap:6px;border:1px solid #e2e8d9;border-radius:7px;padding:6px;background:white;min-width:0}.display-name-row>label{border:0;padding:0;background:none;min-width:0;overflow-wrap:anywhere}.display-name-row>input[type=text]{width:100%;min-width:0;padding:8px;font-size:12px}@media(max-width:760px){#main-display-settings .display-checks:has(.display-name-row){grid-template-columns:1fr}}
+
+.default-sort-settings{display:grid;grid-template-columns:auto minmax(0,1fr) minmax(0,1fr);align-items:center;gap:8px;margin:14px 0}.default-sort-settings select{width:100%;min-width:0;padding:9px 6px}

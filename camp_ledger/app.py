@@ -46,7 +46,7 @@ def normalize_settings(s):
         if key not in d: d[key]=list(DEFAULT['display'][key]) if isinstance(DEFAULT['display'][key],list) else DEFAULT['display'][key]
     if 'columnOrder' in d:
         d['columnOrder']=[k for k in d['columnOrder'] if k in DISPLAY_LABELS]+[k for k in DISPLAY_LABELS if k not in d['columnOrder']]
-    d.setdefault('addButtonPosition','bottom-right');d.setdefault('addButtonLabel','물품 추가');d.setdefault('fieldLabels',{});d.setdefault('emptyText',{});d.setdefault('photoSize',42);d.setdefault('selectionEnabled',True);d.setdefault('selectionPcEnabled',d['selectionEnabled']);d.setdefault('selectionMobileEnabled',d['selectionEnabled'])
+    d.setdefault('defaultSort',{'key':'','direction':'desc'});d.setdefault('addButtonPosition','bottom-right');d.setdefault('addButtonLabel','물품 추가');d.setdefault('fieldLabels',{});d.setdefault('emptyText',{});d.setdefault('photoSize',42);d.setdefault('selectionEnabled',True);d.setdefault('selectionPcEnabled',d['selectionEnabled']);d.setdefault('selectionMobileEnabled',d['selectionEnabled'])
     mobile=d.setdefault('mobile',{})
     if not isinstance(mobile,dict):raise ValueError('모바일 화면 설정을 확인해주세요.')
     for key,value in DEFAULT['display']['mobile'].items():mobile.setdefault(key,{} if key=='columns' else value)
@@ -232,6 +232,8 @@ def valid_settings(s):
     for key in ('categories','methods','buyers','purchase_types'):
         if not isinstance(s.get(key),list) or any(not isinstance(x,str) or not x.strip() for x in s[key]) or len(set(s[key]))!=len(s[key]): raise ValueError('목록 값을 확인해주세요.')
     d=s['display']
+    sort=d['defaultSort']
+    if not isinstance(sort,dict) or set(sort)!=set(('key','direction')) or sort.get('key') not in ['',*DISPLAY_LABELS] or sort.get('direction') not in ('asc','desc'):raise ValueError('기본 정렬 항목과 차순을 확인해주세요.')
     for key,limit in [('fieldLabels',40),('emptyText',100)]:
         values=d[key]
         if not isinstance(values,dict) or any(k not in DISPLAY_LABELS or (key=='emptyText' and k=='photos') or not isinstance(v,str) or len(v)>limit for k,v in values.items()):raise ValueError('항목 이름·빈 내용 표시 설정을 확인해주세요.')

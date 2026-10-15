@@ -90,3 +90,5 @@ body>header{border-bottom:0}
 @media(max-width:700px){.mobile-card-sort{display:flex;align-items:center;gap:16px;border:0;background:transparent;padding:0 8px}.mobile-card-sort button{border:0;background:transparent;padding:8px 0;color:#708274;font-size:13px}.mobile-card-sort button[aria-pressed=true]{color:#234e43;font-weight:700}}
 
 .camp-card-content{display:flow-root}.camp-card-content>.card-layout{float:right;width:var(--layout-size,56px);max-width:45%;margin:0 0 8px 10px}.camp-card-content>.card-layout .card-layout-thumb{width:100%;height:auto;aspect-ratio:1}.camp-card-content>.camp-card-address{display:block;clear:both;width:100%;white-space:normal}
+
+.default-sort-settings{display:grid;grid-template-columns:auto minmax(0,1fr) minmax(0,1fr);align-items:center;gap:8px;margin:12px 0}.default-sort-settings select{width:100%;min-width:0;padding:9px 6px}@media(max-width:700px){.mobile-card-sort{margin:5px 12px 0;padding:0;gap:8px}.mobile-card-sort button{border:1px solid #ccd8ca;border-radius:7px;padding:5px 9px;background:white;font-size:12px}.mobile-card-sort button[aria-pressed=true]{background:#edf2e9;border-color:#285345}.mobile-records{padding-top:6px}}
