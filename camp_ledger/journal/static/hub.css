@@ -3,3 +3,5 @@
 .hub-actions{display:flex;gap:6px;align-items:center}#hubSettings:disabled{opacity:.45;cursor:default}body:has(#hubHeader[hidden]){grid-template-rows:0 minmax(0,1fr)}@media(max-width:500px){#hubSettings,#hubInstall{font-size:12px;padding:9px 8px}.hub-actions{gap:4px}}
 
 @media(max-width:500px){header{flex-wrap:wrap}.hub-actions{margin-left:auto}}
+
+#hubPlatformSync{white-space:nowrap}@media(max-width:500px){#hubPlatformSync{font-size:12px;padding:9px 8px}}
