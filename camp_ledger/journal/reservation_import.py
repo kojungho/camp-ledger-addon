@@ -47,6 +47,22 @@ def parse_reservations(text):
    if m:site=m.group(1).strip();break
   row={'name':name,'site':site,'checkin':start.isoformat(),'checkout':end.isoformat()}
   if identity(row) not in seen:seen.add(identity(row));result.append(row)
+ # Separate check-in/check-out columns (dates may be on one or two OCR lines).
+ date_pattern=re.compile(r'(\d{2,4})\s*[.\-/]\s*(\d{1,2})\s*[.\-/]\s*(\d{1,2})')
+ for i,line in enumerate(lines):
+  if not re.search('입실|퇴실|체크인|체크아웃',line):continue
+  section=' '.join(lines[i:i+4]);dates=date_pattern.findall(section)
+  if len(dates)<2:continue
+  try:
+   values=[list(map(int,v)) for v in dates[:2]]
+   start,end=[date(v[0]+2000 if v[0]<100 else v[0],v[1],v[2]) for v in values]
+  except ValueError:continue
+  if not 0<=(end-start).days<=366:continue
+  candidates=[(n,lines[n]) for n in range(max(0,i-7),i) if re.search('캠핑|캠프|야영장|글램핑|카라반',lines[n]) and not re.search('예약번호|예약정보|후기|재예약|사이트|중개|거래',lines[n])]
+  if not candidates:continue
+  n,name=candidates[-1];name=re.sub(r'^[^\w가-힣]+','',name).strip();site=' · '.join(lines[n+1:i]);site=re.sub(r'^예약\s*정보\s*[:：]\s*','',site).strip()
+  row={'name':name,'site':site,'checkin':start.isoformat(),'checkout':end.isoformat()}
+  if identity(row) not in seen:seen.add(identity(row));result.append(row)
  return result
 
 def thumbnail_boxes(image):
@@ -121,7 +137,11 @@ def image_text(file,with_records=False):
     for index,box in enumerate(boxes):
      if time.monotonic()>=deadline:break
      left,top,right,bottom=box
-     picture=image.crop((max(right+4,round(image.width*.28)),max(0,top-round(image.width*.025)),image.width,min(image.height,bottom+round(image.width*.055))))
+     # The title/site are beside the photo; some platforms place dates below it.
+     title=image.crop((max(right+4,round(image.width*.28)),max(0,top-round(image.width*.025)),image.width,bottom))
+     lower=min(image.height,bottom+round(image.width*.32),boxes[index+1][1]-round(image.width*.11) if index+1<len(boxes) else image.height)
+     below=image.crop((round(image.width*.035),bottom,round(image.width*.965),max(bottom,lower)))
+     picture=Image.new('RGB',(max(title.width,below.width),title.height+below.height+15),'white');picture.paste(title,(0,0));picture.paste(below,(0,title.height+15))
      try:text=recognize(picture,'card-'+str(index),limit=12)
      except subprocess.TimeoutExpired:timed_out=True;continue
      parts.append(text);found=parse_reservations(text)
@@ -153,7 +173,7 @@ def parse_reservation_text(text):
  text=unicodedata.normalize('NFKC',text).replace('\r','')[:10000]
  if re.search(r'예약\s*취소|취소\s*완료|취소되었',text):return []
  rows=parse_reservations(text)
- if rows:return rows
+ if rows and not re.search(r'(?:캠핑장명|캠핑장|업체명|숙소명)\s*[:：]',text):return rows
  pattern=r'(20\d{2})[./-](\d{1,2})[./-](\d{1,2})'
  dates=list(re.finditer(pattern,text));duration=re.search(r'(\d{1,3})\s*박',text)
  start_match=re.search(r'(?:입실(?:일)?|체크인|이용시작)\s*[:：]?\s*'+pattern,text)

@@ -60,3 +60,7 @@ class ReservationTest(unittest.TestCase):
   settings['desktop']['visible']['rating']=False;settings['display_mobile']['visible']['rating']=True;settings['desktop']['rating_size']=12;settings['display_mobile']['rating_size']=24;settings['display_mobile']['rating_spacing']=0
   self.assertEqual(self.client.put('/api/settings',json=settings,headers=self.headers).status_code,200);result=self.client.get('/api/state').json['settings'];self.assertEqual(result['desktop']['order'][0],'rating');self.assertFalse(result['desktop']['visible']['rating']);self.assertEqual(result['display_mobile']['rating_size'],24);self.assertEqual(result['display_mobile']['rating_spacing'],0)
   settings['desktop']['rating_size']=60;self.assertEqual(self.client.put('/api/settings',json=settings,headers=self.headers).status_code,400)
+ def test_separate_arrival_departure_columns(self):
+  text='평창 가야지캠핑장\n*D구역/호수뷰 15*강자갈/차박O/애견O\n입실일        퇴실일\n26. 09. 24 (목)        26. 09. 26 (토)\n다시 예약하기'
+  rows=parse_reservations(text);self.assertEqual(len(rows),1);self.assertEqual(rows[0]['name'],'평창 가야지캠핑장');self.assertEqual(rows[0]['checkin'],'2026-09-24');self.assertEqual(rows[0]['checkout'],'2026-09-26');self.assertIn('호수뷰 15',rows[0]['site'])
+  self.assertEqual(parse_reservations(text.replace('26. 09. 26','26. 09. 23')),[])
