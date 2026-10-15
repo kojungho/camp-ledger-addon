@@ -119,7 +119,7 @@ def install_mobile(app, connection, get_settings, data_dir):
 
     @app.get('/manifest.webmanifest')
     def manifest():
-        return jsonify(name='캠핑 장부',short_name='캠핑 장부',id='./',start_url='./',scope='./',display='standalone',background_color='#f6f7f2',theme_color='#285345',icons=[{'src':'static/icons/icon-192.png','sizes':'192x192','type':'image/png','purpose':'any'},{'src':'static/icons/icon-512.png','sizes':'512x512','type':'image/png','purpose':'any maskable'}])
+        return jsonify(name='캠핑 노트',short_name='캠핑 노트',id='./',start_url='./hub',scope='./',display='standalone',background_color='#f6f7f2',theme_color='#285345',icons=[{'src':'static/icons/icon-192.png','sizes':'192x192','type':'image/png','purpose':'any'},{'src':'static/icons/icon-512.png','sizes':'512x512','type':'image/png','purpose':'any maskable'}])
 
     @app.get('/service-worker.js')
     def worker(): return send_file(Path(app.static_folder)/'service-worker.js',mimetype='application/javascript')

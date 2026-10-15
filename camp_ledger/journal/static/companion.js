@@ -1,0 +1,2 @@
+'use strict';
+(()=>{const button=document.getElementById('companionApp');if(!button)return;const external=location.pathname.startsWith('/campsite-journal/');button.href=external?'hub#ledger':'https://ha.badara.co.kr/5ec8f074_camp_ledger';button.target=external?'_self':'_top';if(new URLSearchParams(location.search).get('camp_hub')==='1')button.onclick=event=>{event.preventDefault();parent.postMessage({type:'camp-switch',service:'ledger'},location.origin)}})();

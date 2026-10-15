@@ -292,7 +292,7 @@ def headers(r):
     return r
 
 @app.get('/')
-def index(): return app.send_static_file('index.html')
+def index(): return app.send_static_file('index.html' if request.args.get('camp_hub')=='1' else 'hub.html')
 @app.get('/api/state')
 def state():
     with conn() as c:
@@ -697,8 +697,11 @@ def restore():
             c.executemany('INSERT INTO attachments(id,item_id,name,mime,data,kind) VALUES(?,?,?,?,?,?)',attachments)
     return jsonify(ok=True)
 
+from integrated import install_integration,combined_app
+install_integration(app,mobile)
+
 if __name__=='__main__':
     from waitress import serve
     import threading
-    threading.Thread(target=lambda:serve(channel_app(app,'external'),host='0.0.0.0',port=8098,threads=16,max_request_body_size=2**40),daemon=True).start()
-    serve(channel_app(app,'ingress'),host=os.environ.get('CAMP_HOST','0.0.0.0'),port=int(os.environ.get('PORT','8099')),threads=16,max_request_body_size=2**40)
+    threading.Thread(target=lambda:serve(combined_app(app,'external'),host='0.0.0.0',port=8098,threads=16,max_request_body_size=2**40),daemon=True).start()
+    serve(combined_app(app,'ingress'),host=os.environ.get('CAMP_HOST','0.0.0.0'),port=int(os.environ.get('PORT','8099')),threads=16,max_request_body_size=2**40)

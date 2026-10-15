@@ -1,0 +1,16 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const elements=new Map();
+class Element{
+ constructor(){this.children=[];this.classes=new Set();this.classList={add:(c)=>this.classes.add(c)};this.value='';this.open=false;this.attrs={}}
+ set innerHTML(value){for(const [,id] of value.matchAll(/id="([^"]+)"/g))elements.set('#'+id,new Element());this.head=new Element()}
+ querySelector(){return this.head}setAttribute(k,v){this.attrs[k]=v}append(e){this.children.push(e);if(e.id)elements.set('#'+e.id,e)}replaceChildren(){this.children=[]}addEventListener(){}dispatchEvent(){this.changed=true}showModal(){this.open=true}close(){this.open=false}
+}
+const form={elements:{checkin:new Element(),checkout:new Element()}};elements.set('#recordForm',form);
+const context={document:{body:new Element(),createElement:()=>new Element(),querySelector:q=>elements.get(q)},window:{},Date,Intl,Event:class{}};
+vm.runInNewContext(fs.readFileSync('camp_ledger/journal/static/stay-picker.js','utf8'),context);context.window.setupStayPicker();
+const day=n=>elements.get('#stayDays').children.find(e=>e.textContent===n);
+form.elements.checkin.value='2026-01-29';form.elements.checkout.value='2026-01-30';form.elements.checkin.onclick();assert.equal(elements.get('#stayPicker').open,true);day(29).onclick();assert.equal(form.elements.checkout.value,'2026-01-30');elements.get('#nextMonth').onclick();day(3).onclick();assert.equal(form.elements.checkin.value,'2026-01-29');assert.equal(form.elements.checkout.value,'2026-02-03');assert.equal(elements.get('#stayPicker').open,false);
+form.elements.checkin.value='2028-02-01';form.elements.checkout.value='';form.elements.checkout.onclick();assert.ok(day(29));day(20).onclick();day(10).onclick();assert.equal(elements.get('#stayPicker').open,true);day(21).onclick();assert.equal(form.elements.checkin.value,'2028-02-10');assert.equal(form.elements.checkout.value,'2028-02-21');assert.equal(elements.get('#stayPicker').open,false);assert.ok(form.elements.checkin.changed);assert.equal(form.elements.checkin.readOnly,true);
+console.log('Stay calendar: cross-month range, automatic completion, earlier start and leap year passed.');
+form.elements.checkin.value='2026-01-29';form.elements.checkout.value='';form.elements.checkin.onclick();day(29).onclick();elements.get('#stayYear').onchange({target:{value:'2027'}});elements.get('#stayMonth').onchange({target:{value:'1'}});assert.equal(elements.get('#stayYear').value,'2027');assert.equal(elements.get('#stayMonth').value,'1');assert.equal(day(29),undefined);day(3).onclick();assert.equal(form.elements.checkin.value,'2026-01-29');assert.equal(form.elements.checkout.value,'2027-02-03');assert.equal(elements.get('#stayPicker').open,false);
+form.elements.checkin.value='2028-01-01';form.elements.checkin.onclick();elements.get('#stayMonth').onchange({target:{value:'1'}});assert.ok(day(29));elements.get('#stayMonth').onchange({target:{value:'11'}});elements.get('#nextMonth').onclick();assert.equal(elements.get('#stayYear').value,'2029');assert.equal(elements.get('#stayMonth').value,'0');console.log('Year/month dropdowns preserve pending range, leap dates and year-boundary navigation.');
