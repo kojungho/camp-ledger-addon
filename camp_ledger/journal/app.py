@@ -65,7 +65,7 @@ def guard():
 @app.after_request
 def headers(r):
  r.headers['X-Content-Type-Options']='nosniff';r.headers['Referrer-Policy']='strict-origin-when-cross-origin';r.headers['Cache-Control']='no-store' if request.path.startswith('/api/') else 'no-cache'
- if request.method in ('POST','PUT','DELETE') and request.path.startswith('/api/') and r.status_code<400 and request.path not in ('/api/import/preview','/api/import/text-preview'):live_sync.publish()
+ if request.method in ('POST','PUT','DELETE') and request.path.startswith('/api/') and r.status_code<400 and request.path not in ('/api/import/preview','/api/import/text-preview','/api/platforms/preview'):live_sync.publish()
  r.headers['Content-Security-Policy']="default-src 'self'; img-src 'self' data: blob: https://tile.openstreetmap.org https://*.kakao.com https://*.daumcdn.net https://*.daum.net https://*.kakaocdn.net; style-src 'self' 'unsafe-inline'; script-src 'self' https://dapi.kakao.com https://*.daumcdn.net https://*.daum.net https://*.kakaocdn.net; connect-src 'self' https://*.kakao.com https://*.daumcdn.net https://*.daum.net; frame-src 'self' kakaonavi-sdk: kakaomap: nmap: tmap: intent: https://kakaonavi.kakao.com https://www.openstreetmap.org https://postcode.map.kakao.com https://postcode.map.daum.net; base-uri 'self'; form-action 'self'"
  return r
 @app.errorhandler(ValueError)
@@ -189,7 +189,8 @@ def update(ident):
   c.execute('BEGIN IMMEDIATE')
   previous=c.execute('SELECT body FROM records WHERE id=?',(ident,)).fetchone()
   if not previous:abort(404)
-  if 'rating' not in b and 'rating' in json.loads(previous['body']):b['rating']=json.loads(previous['body'])['rating']
+  for key in ('rating','platform_ref'):
+   if key not in b and key in json.loads(previous['body']):b[key]=json.loads(previous['body'])[key]
   reject_duplicate(c,b,ident)
   if not c.execute('UPDATE records SET body=? WHERE id=?',(json.dumps(b,ensure_ascii=False),ident)).rowcount:abort(404)
  return jsonify(ok=True)
@@ -248,9 +249,10 @@ def save_with_photos():
   with connection() as c:
    c.execute('BEGIN IMMEDIATE');owner=ident or source
    if owner and not c.execute('SELECT 1 FROM records WHERE id=?',(owner,)).fetchone():raise ValueError('기록이 삭제되어 저장할 수 없습니다.')
-   if ident and 'rating' not in body:
+   if ident:
     previous=json.loads(c.execute('SELECT body FROM records WHERE id=?',(ident,)).fetchone()['body'])
-    if 'rating' in previous:body['rating']=previous['rating']
+    for key in ('rating','platform_ref'):
+     if key not in body and key in previous:body[key]=previous[key]
    reject_duplicate(c,body,ident)
    existing={p['id']:dict(p) for p in c.execute('SELECT * FROM photos WHERE record_id=?',(owner,))} if owner else {}
    if not set(keep_values)<=set(existing) or not set(remove)<=set(existing) or set(remove)&set(keep_values) or remove and not ident:raise ValueError('현재 기록에 속한 사진만 저장할 수 있습니다.')
@@ -348,6 +350,15 @@ def import_preview():
  with connection() as c:existing={identity(json.loads(row['body'])) for row in c.execute('SELECT body FROM records')}
  rows=result['records'] if result is not None else review_records(text)
  return jsonify(text=text,records=[{**row,'duplicate':bool(row.get('checkin') and row.get('checkout') and identity(row) in existing)} for row in rows])
+@app.post('/api/platforms/preview')
+def platform_preview():
+ from .platform_sync import preview
+ with connection() as c:records=[{**json.loads(r['body']),'id':r['id']} for r in c.execute('SELECT * FROM records')]
+ return jsonify(preview(request.get_json(silent=True),records))
+@app.post('/api/platforms/commit')
+def platform_commit():
+ from .platform_sync import commit
+ return jsonify(commit(request.get_json(silent=True),connection,clean,reject_duplicate,MEDIA))
 @app.post('/api/import/text-preview')
 def import_text_preview():
  from .reservation_import import parse_reservation_text,identity

@@ -1,11 +1,11 @@
 'use strict';
 (()=>{
  let previousLabel=null;
- window.setReservationReviewMode=(handler,count=0)=>{
+ window.setReservationReviewMode=(handler,count=0,action='등록')=>{
   const manual=document.querySelector('#manualRecordFields'),submit=document.querySelector('#recordSubmit');
   window.submitReservationReview=handler;
   manual.hidden=Boolean(handler);manual.querySelectorAll('[name]').forEach(input=>input.disabled=Boolean(handler));
-  if(handler){if(previousLabel===null)previousLabel=submit.textContent;submit.textContent='선택한 '+count+'건 등록';submit.disabled=count===0;}
+  if(handler){if(previousLabel===null)previousLabel=submit.textContent;submit.textContent='선택한 '+count+'건 '+action;submit.disabled=count===0;}
   else{if(previousLabel!==null)submit.textContent=previousLabel;previousLabel=null;submit.disabled=false;}
  };
  window.setupReservationEditor=({card,row})=>{

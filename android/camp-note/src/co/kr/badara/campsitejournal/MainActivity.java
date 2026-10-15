@@ -56,7 +56,7 @@ public class MainActivity extends Activity {
     private volatile String requestedPhotoPickerMode;
     private volatile boolean editing=false,journalEditing=false,ledgerEditing=false;
     private boolean chooserPhotos=false;
-    private AppUpdater updater;
+    private AppUpdater updater;private boolean platformConnecting=false;private String pendingPlatformPayload;private int platformDeliveryAttempts=0;
     public final class PhotoPickerBridge {
         private final boolean ledger;
         PhotoPickerBridge(boolean ledger){this.ledger=ledger;}
@@ -65,6 +65,11 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void flushCookies(){CookieManager.getInstance().flush();}
         @JavascriptInterface public String readReservationClipboard(){
             try{ClipboardManager clipboard=(ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE);if(clipboard==null||!clipboard.hasPrimaryClip())return "";ClipData clip=clipboard.getPrimaryClip();if(clip==null||clip.getItemCount()==0)return "";CharSequence value=clip.getItemAt(0).getText();if(value==null)return "";String text=value.toString();return text.length()>10000?text.substring(0,10000):text;}catch(Exception unavailable){return "";}
+        }
+        @JavascriptInterface public int getPlatformSyncVersion(){return 1;}
+        @JavascriptInterface public void openPlatform(String provider){
+            if(!"camfit".equals(provider)&&!"thankq".equals(provider)&&!"campingtalk".equals(provider))return;
+            runOnUiThread(()->{if(platformConnecting)return;platformConnecting=true;startActivityForResult(new Intent(MainActivity.this,PlatformActivity.class).putExtra("provider",provider),901);});
         }
         @JavascriptInterface public String getVersion() {return appVersion();}
         @JavascriptInterface public boolean isMapAppInstalled(String kind){
@@ -91,7 +96,7 @@ public class MainActivity extends Activity {
         File photos=new File(getCacheDir(),"photos");File[] old=photos.listFiles();if(old!=null)for(File f:old)if(f.isFile()&&System.currentTimeMillis()-f.lastModified()>7L*24*60*60*1000)f.delete();
         handleIntent(getIntent());
         if(key==null)showConnect(); else showLedger();
-        updater=new AppUpdater(this,()->editing||chooser!=null);updater.check();
+        updater=new AppUpdater(this,()->editing||chooser!=null||platformConnecting);updater.check();
         
     }
     @Override protected void onNewIntent(Intent intent) {
@@ -180,6 +185,7 @@ public class MainActivity extends Activity {
                 Uri uri=request.getUrl();if(openMappingUri(uri))return true;if(!request.isForMainFrame()){return !("https".equals(uri.getScheme())&&(("ha.badara.co.kr".equals(uri.getHost())&&(uri.getPath().startsWith("/campsite-journal/")||uri.getPath().startsWith("/camp-ledger/")))||"postcode.map.kakao.com".equals(uri.getHost())||"postcode.map.daum.net".equals(uri.getHost())||"www.openstreetmap.org".equals(uri.getHost()))); }if("https".equals(uri.getScheme())&&"ha.badara.co.kr".equals(uri.getHost())&&(uri.getPath().startsWith("/campsite-journal/")||uri.getPath().startsWith("/camp-ledger/")))return false;
                 try{startActivity(new Intent(Intent.ACTION_VIEW,uri));}catch(Exception ignored){}return true;
             }
+            @Override public void onPageFinished(WebView view,String url){deliverPlatformPayload();}
             @Override public void onReceivedError(WebView view,WebResourceRequest request,WebResourceError error){if(request.isForMainFrame())Toast.makeText(MainActivity.this,"기록에 연결하지 못했습니다. 인터넷 연결을 확인해주세요.",Toast.LENGTH_LONG).show();}
         });
         web.setWebChromeClient(new WebChromeClient(){
@@ -224,8 +230,15 @@ public class MainActivity extends Activity {
         try(InputStream in=getContentResolver().openInputStream(source);OutputStream out=new FileOutputStream(target)){if(in==null)throw new IOException();byte[] buffer=new byte[16384];int n;while((n=in.read(buffer))!=-1)out.write(buffer,0,n);}catch(Exception e){target.delete();throw e;}
         if(target.length()==0){target.delete();throw new IOException();}return LedgerFileProvider.uri(this,"photos",target);
     }
-    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request!=10||chooser==null)return;ValueCallback<Uri[]> pending=chooser;chooser=null;Uri[] uris=selectedUris(result,data);if(uris==null||!chooserPhotos){pending.onReceiveValue(uris);return;}
+    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);
+        if(request==901){platformConnecting=false;if(result==RESULT_OK&&data!=null){String name=data.getStringExtra("payload");if(name!=null&&name.matches("[a-f0-9-]{36}\\.json")){File file=new File(new File(getCacheDir(),"platform-sync"),name);try{if(file.length()>10*1024*1024)throw new IOException();try(InputStream in=new FileInputStream(file);ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] bytes=new byte[8192];int n;while((n=in.read(bytes))!=-1){if(out.size()+n>10*1024*1024)throw new IOException();out.write(bytes,0,n);}pendingPlatformPayload=new String(out.toByteArray(),"UTF-8");platformDeliveryAttempts=0;}deliverPlatformPayload();}catch(Exception unavailable){Toast.makeText(this,"동기화 내용을 읽지 못했습니다.",Toast.LENGTH_LONG).show();}finally{file.delete();}}}return;}
+        if(request!=10||chooser==null)return;ValueCallback<Uri[]> pending=chooser;chooser=null;Uri[] uris=selectedUris(result,data);if(uris==null||!chooserPhotos){pending.onReceiveValue(uris);return;}
         new Thread(()->{ArrayList<Uri> copied=new ArrayList<>();for(Uri uri:uris)try{copied.add(cachePhoto(uri));}catch(Exception ignored){}runOnUiThread(()->{if(copied.isEmpty()){pending.onReceiveValue(null);Toast.makeText(this,"선택한 사진을 읽지 못했습니다. 파일 앱으로 다시 선택해주세요.",Toast.LENGTH_LONG).show();}else pending.onReceiveValue(copied.toArray(new Uri[0]));});},"campsite-journal-photos").start();
+    }
+    private void deliverPlatformPayload(){
+        if(web==null||pendingPlatformPayload==null)return;String address=web.getUrl();if(address==null)return;Uri url=Uri.parse(address);if(!"https".equals(url.getScheme())||!"ha.badara.co.kr".equals(url.getHost())||!(url.getPath().startsWith("/campsite-journal/")||url.getPath().startsWith("/camp-ledger/")))return;
+        String value=pendingPlatformPayload;
+        web.evaluateJavascript("(function(raw){var message={type:'camp-platform-capture',payload:JSON.parse(raw)},sent=false;if(window.campPlatformSyncReady&&window.campAppReady){window.postMessage(message,location.origin);sent=true;}document.querySelectorAll('iframe').forEach(function(frame){try{if(frame.contentWindow.campPlatformSyncReady&&frame.contentWindow.campAppReady){frame.contentWindow.postMessage(message,location.origin);sent=true;}}catch(ignored){}});return sent;})("+org.json.JSONObject.quote(value)+")",result->{if("true".equals(result)&&value.equals(pendingPlatformPayload)){pendingPlatformPayload=null;}else if(++platformDeliveryAttempts<20&&web!=null){web.postDelayed(()->deliverPlatformPayload(),500);}});
     }
     @Override protected void onResume(){super.onResume();applySystemBars();if(updater!=null){updater.resumed();}}
     @Override public void onBackPressed(){if(web!=null&&web.canGoBack())web.goBack();else super.onBackPressed();}

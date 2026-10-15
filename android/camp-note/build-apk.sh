@@ -7,7 +7,7 @@ build_tools="$sdk_dir/build-tools/36.1.0"
 android_jar="$sdk_dir/platforms/android-36/android.jar"
 mkdir -p "$build_dir/classes" "$build_dir/generated" "$build_dir/dex"
 "$build_tools/aapt2" compile --dir "$src_dir/res" -o "$build_dir/resources.zip"
-"$build_tools/aapt2" link -o "$build_dir/unsigned.apk" --manifest "$src_dir/AndroidManifest.xml" -I "$android_jar" --java "$build_dir/generated" "$build_dir/resources.zip"
+"$build_tools/aapt2" link -o "$build_dir/unsigned.apk" --manifest "$src_dir/AndroidManifest.xml" -A "$src_dir/assets" -I "$android_jar" --java "$build_dir/generated" "$build_dir/resources.zip"
 find "$src_dir/src" "$build_dir/generated" -name '*.java' > "$build_dir/sources.txt"
 javac --release 8 -classpath "$android_jar" -d "$build_dir/classes" @"$build_dir/sources.txt"
 jar cf "$build_dir/classes.jar" -C "$build_dir/classes" .

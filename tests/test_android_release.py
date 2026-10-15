@@ -18,3 +18,19 @@ class AndroidReleaseTest(unittest.TestCase):
         provider=manifest.find('application/provider')
         self.assertEqual(provider.attrib[android+'exported'],'false')
         self.assertEqual(provider.attrib[android+'grantUriPermissions'],'true')
+
+    def test_unified_camp_note_metadata_and_capture_asset(self):
+        import zipfile
+        downloads=ROOT/'camp_ledger/journal/static/downloads'
+        meta=json.loads((downloads/'android-version.json').read_text())
+        manifest=ET.parse(ROOT/'android/camp-note/AndroidManifest.xml').getroot()
+        android='{http://schemas.android.com/apk/res/android}'
+        self.assertEqual(meta['version_code'],int(manifest.attrib[android+'versionCode']))
+        self.assertEqual(meta['version_name'],manifest.attrib[android+'versionName'])
+        apk=(downloads/'camp-note.apk').read_bytes()
+        self.assertEqual(meta['sha256'],hashlib.sha256(apk).hexdigest())
+        self.assertEqual(apk,(downloads/'campsite-journal.apk').read_bytes())
+        activity=next(a for a in manifest.findall('application/activity') if a.attrib[android+'name'].endswith('PlatformActivity'))
+        self.assertEqual(activity.attrib[android+'exported'],'false')
+        with zipfile.ZipFile(downloads/'camp-note.apk') as archive:
+            self.assertEqual(archive.read('assets/platform-capture.js'),(ROOT/'android/camp-note/assets/platform-capture.js').read_bytes())
