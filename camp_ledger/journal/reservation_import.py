@@ -1,5 +1,5 @@
 """Local screenshot OCR and conservative reservation extraction; no external service."""
-import io,re,subprocess,tempfile,unicodedata
+import io,re,subprocess,tempfile,unicodedata,os,time,threading
 from pathlib import Path
 from PIL import Image,ImageOps,UnidentifiedImageError
 
@@ -22,35 +22,55 @@ def parse_reservations(text):
   if end<start:continue
   candidates=[(n,lines[n]) for n in range(max(0,i-5),i) if re.search('캠핑|야영장',lines[n]) and not re.search(r'로그|예약번호|결제|이용완료|사이트|선착순|[ㆍ·]\s*\d+\s*명',lines[n])]
   if not candidates:continue
-  n,name=candidates[-1];name=re.sub(r'^[△▶•\s]+','',name).strip()
+  n,name=candidates[-1];name=re.sub(r'^[^\w가-힣]+','',name).strip()
   site=' · '.join(lines[n+1:i]);site=re.sub(r'\s*[·ㆍ]\s*\d+\s*명.*$','',site).strip()
   record={'name':name,'site':site,'checkin':start,'checkout':end}
   key=identity(record)
   if key not in seen:seen.add(key);result.append(record)
  return result
 
+OCR_SLOT=threading.BoundedSemaphore(1)
+
 def image_text(file):
- # Decode and normalize into a bounded local image before invoking OCR.
  try:original=Image.open(file.stream)
  except (UnidentifiedImageError,OSError,Image.DecompressionBombError):raise ValueError('읽을 수 있는 이미지 파일을 선택해주세요.')
  with original:
   if original.width*original.height>25000000:raise ValueError('사진은 2,500만 화소 이하로 선택해주세요.')
-  image=ImageOps.exif_transpose(original).convert('RGB');image.thumbnail((2600,5000))
-  if image.width<1200:image=image.resize((image.width*2,image.height*2))
+  image=ImageOps.exif_transpose(original).convert('RGB');image.thumbnail((1800,7000))
+ if not OCR_SLOT.acquire(timeout=3):raise ValueError('다른 사진을 인식 중입니다. 잠시 후 다시 선택해주세요.')
+ try:
   with tempfile.TemporaryDirectory(prefix='camp-ocr-') as directory:
+   deadline=time.monotonic()+65;timed_out=False;outputs=[]
    def recognize(picture,name):
-    path=Path(directory)/(name+'.png');picture.save(path)
-    try:result=subprocess.run(['tesseract',str(path),'stdout','-l','kor+eng','--psm','6'],capture_output=True,text=True,timeout=20)
+    # Enlarge text, not the photograph-filled whole screenshot. Keep a bounded canvas.
+    if picture.width<1100:
+     scale=min(1.5,1100/picture.width);picture=picture.resize((round(picture.width*scale),round(picture.height*scale)),Image.Resampling.LANCZOS)
+    picture.thumbnail((1500,6500));picture=ImageOps.expand(ImageOps.grayscale(picture),border=12,fill='white')
+    path=(Path(directory)/(name+'.png')).resolve();picture.save(path)
+    args=['tesseract',str(path),'stdout','-l','kor+eng','--psm','6']
+    models=Path(os.getenv('CAMP_OCR_MODELS','/app/ocr-models'))
+    if (models/'kor.traineddata').is_file():args.extend(['--tessdata-dir',str(models)])
+    try:result=subprocess.run(args,capture_output=True,text=True,timeout=max(1,min(40,deadline-time.monotonic())),env={**os.environ,'OMP_THREAD_LIMIT':'1','OMP_NUM_THREADS':'1'})
     except FileNotFoundError:raise ValueError('사진 인식 구성요소가 없습니다. 인식할 글자를 직접 붙여넣어주세요.')
-    except subprocess.TimeoutExpired:raise ValueError('사진 인식 시간이 초과됐습니다. 사진을 잘라 다시 선택해주세요.')
     if result.returncode:raise ValueError('사진에서 글자를 읽지 못했습니다. 다른 사진이나 직접 입력을 사용해주세요.')
     return result.stdout[:50000]
-   full=recognize(image,'full');rows=parse_reservations(full)
-   # Thumbnails beside text can become stray Latin words in the recognized name.
-   # Compare a text-side pass; the user still reviews every result before saving.
-   side=recognize(image.crop((int(image.width*.30),0,image.width,image.height)),'text-side');side_rows=parse_reservations(side)
-   if len(side_rows)>len(rows) or (side_rows and len(side_rows)==len(rows) and any(re.match(r'^[A-Za-z]',r['name']) for r in rows)):return side
-   return full
+   # Booking cards place photos on the left. Try their text column first; fall back
+   # to the whole image for other layouts. A successful pass is never discarded.
+   pictures=[(image.crop((int(image.width*.29),0,image.width,image.height)),'text-side'),(image,'full')]
+   for picture,name in pictures:
+    if time.monotonic()>=deadline:break
+    try:text=recognize(picture,name)
+    except subprocess.TimeoutExpired:timed_out=True;continue
+    outputs.append(text)
+    rows=parse_reservations(text)
+    dated_lines=sum(bool(re.search(r'\d[./]\s*\d{1,2}.*[~–—-].*\d[./]\s*\d{1,2}',line)) for line in text.splitlines())
+    if rows and len(rows)>=dated_lines:return text
+   if outputs:
+    best=max(outputs,key=lambda text:len(parse_reservations(text)))
+    if parse_reservations(best) or not timed_out:return best
+   if timed_out:raise ValueError('사진 인식 시간이 초과됐습니다. 예약 내용 부분만 잘라 다시 선택해주세요.')
+   return ''
+ finally:OCR_SLOT.release()
 
 def parse_reservation_text(text):
  """Extract only booking fields; recipient names and the original clipboard are not stored."""

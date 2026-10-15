@@ -15,7 +15,7 @@ def combined_app(ledger,channel):
  def application(environ,start_response):
   environ['camp.unified']=True
   environ['camp.entrypoint']=environ['journal.entrypoint']=channel
-  if environ.get('PATH_INFO','').startswith('/journal'):
+  if environ.get('PATH_INFO','').startswith('/journal') and environ.get('PATH_INFO')!='/journal/api/import/preview':
    with LOCK:return dispatched(environ,start_response)
   return dispatched(environ,start_response)
  return application

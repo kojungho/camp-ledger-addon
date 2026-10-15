@@ -97,3 +97,5 @@ body>header{border-bottom:0}
 .floating-add{font-size:var(--float-add-font);min-height:calc(52px * var(--float-add-scale));padding:calc(12px * var(--float-add-scale)) calc(18px * var(--float-add-scale));gap:calc(6px * var(--float-add-scale));border-radius:999px}.floating-add>span:first-child{font-size:calc(24px * var(--float-add-scale))}.floating-add.same-position[data-position^="bottom-"]{margin-bottom:calc(44px * var(--float-top-scale) + 20px)}.floating-add.same-position[data-position^="top-"]{margin-top:calc(44px * var(--float-top-scale) + 20px)}
 #scrollTop{width:calc(44px * var(--float-top-scale));height:calc(44px * var(--float-top-scale));padding:calc(10px * var(--float-top-scale));min-width:max-content;min-height:max-content}#scrollTop svg{width:var(--float-top-font);height:var(--float-top-font);flex:none}
 @media(max-width:700px){:root{--float-add-scale:calc(var(--float-mobile-addScale,100) / 100);--float-add-font:var(--float-mobile-addFont,14px);--float-top-scale:calc(var(--float-mobile-topScale,100) / 100);--float-top-font:var(--float-mobile-topFont,24px)}}
+
+.address-app-choices{grid-template-columns:repeat(3,minmax(0,1fr))}

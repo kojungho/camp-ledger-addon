@@ -44,3 +44,17 @@ class IntegrationTest(unittest.TestCase):
  def test_bad_archive_does_not_change_data(self):
   result=self.client.post('/api/integration/import-journal',data={'archive':(io.BytesIO(b'not-a-zip'),'journal.zip')},headers=self.headers);self.assertEqual(result.status_code,400)
   with connection() as c:self.assertEqual(c.execute('SELECT COUNT(*) FROM records').fetchone()[0],0)
+ def test_slow_ocr_does_not_block_other_devices_state_reads(self):
+  import threading
+  from unittest.mock import patch
+  entered=threading.Event();release=threading.Event();finished=threading.Event();statuses=[]
+  application=combined_app(ledger.app,'ingress')
+  def recognize(_):
+   entered.set();release.wait(5);return '캠핑장\n일정 26.10.01-26.10.03'
+  def preview():statuses.append(Client(application,Response).post('/journal/api/import/preview',data={'image':(io.BytesIO(b'photo'),'image.png')},headers=self.headers).status_code)
+  def state():statuses.append(Client(application,Response).get('/journal/api/state').status_code);finished.set()
+  with patch('journal.reservation_import.image_text',side_effect=recognize):
+   reader=threading.Thread(target=preview);reader.start();self.assertTrue(entered.wait(2));viewer=threading.Thread(target=state);viewer.start()
+   try:self.assertTrue(finished.wait(2),'OCR must not hold the shared journal request lock')
+   finally:release.set();reader.join(5);viewer.join(5)
+  self.assertEqual(statuses,[200,200])
