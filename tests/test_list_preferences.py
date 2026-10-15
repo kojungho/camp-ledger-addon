@@ -20,6 +20,14 @@ class ListPreferencesTest(unittest.TestCase):
   for invalid in [19,401,-1,True,'60']:
    s['desktop']['row_height']=invalid;self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,400)
   s['desktop']['row_height']=0;self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,200)
+ def test_floating_add_positions(self):
+  for module,key in [(journal,'add_position'),(ledger.app,'addButtonPosition')]:
+   client=module.test_client();s=client.get('/api/state').json['settings'];target=s if key=='add_position' else s['display']
+   self.assertEqual(target[key],'bottom-right')
+   for position in ('top-left','top-center','top-right','bottom-left','bottom-center','bottom-right'):
+    target[key]=position;self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,200)
+    saved=client.get('/api/state').json['settings'];self.assertEqual((saved if key=='add_position' else saved['display'])[key],position)
+   target[key]='invalid';self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,400)
  def test_ledger_blank_labels_empty_text_selection_and_photo_size(self):
   client=ledger.app.test_client();s=client.get('/api/state').json['settings'];d=s['display'];d.update(fieldLabels={'name':'','buyer':'  '},emptyText={'notes':'없음','buyer':''},photoSize=100,selectionEnabled=False)
   self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,200)

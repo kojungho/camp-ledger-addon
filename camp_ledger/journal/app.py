@@ -41,7 +41,7 @@ def upgrade_columns(settings):
    widths=settings.setdefault(mode,{}).setdefault('widths',{});widths.setdefault('nights',widths.get('checkout',100))
  return settings
 def get_settings(c):
- s=upgrade_columns(json.loads(c.execute('SELECT body FROM settings WHERE id=1').fetchone()[0]));s.setdefault('platforms',list(DEFAULT_PLATFORMS));s.setdefault('scroll_top','right-bottom');s.setdefault('kakao_key','');s.setdefault('detail_order',list(DETAIL_FIELDS));s.setdefault('field_labels',{});s.setdefault('selection_enabled',True);s.setdefault('duplicate_enabled',True)
+ s=upgrade_columns(json.loads(c.execute('SELECT body FROM settings WHERE id=1').fetchone()[0]));s.setdefault('platforms',list(DEFAULT_PLATFORMS));s.setdefault('scroll_top','right-bottom');s.setdefault('add_position','bottom-right');s.setdefault('kakao_key','');s.setdefault('detail_order',list(DETAIL_FIELDS));s.setdefault('field_labels',{});s.setdefault('selection_enabled',True);s.setdefault('duplicate_enabled',True)
  for mode in ('desktop','display_mobile'):
   s[mode].setdefault('link_size',20);s[mode].setdefault('order',list(s['order']) if mode=='desktop' else ['name','site','checkin','checkout','nights','location','price','notes','platform','booking_url','map_url','photos','layout']);s[mode].setdefault('visible',dict(s['visible']));s[mode].setdefault('photo_size',38);s[mode].setdefault('row_height',0)
  s.setdefault('empty_text',{})
@@ -344,6 +344,8 @@ def settings():
   if not isinstance(kakao_key,str) or (kakao_key and (len(kakao_key)!=32 or any(ch not in '0123456789abcdefABCDEF' for ch in kakao_key))):raise ValueError('카카오 JavaScript 키를 확인해주세요.')
   scroll_top=raw.get('scroll_top',s['scroll_top'])
   if scroll_top not in [side+'-'+pos for side in ('left','right') for pos in ('top','middle','bottom')]:raise ValueError('맨 위로 버튼 위치를 확인해주세요.')
+  add_position=raw.get('add_position',s['add_position'])
+  if add_position not in ('top-left','top-center','top-right','bottom-left','bottom-center','bottom-right'):raise ValueError('추가 버튼 위치를 확인해주세요.')
   actions={k:raw.get(k,s[k]) for k in ('selection_enabled','duplicate_enabled')}
   if any(type(value)!=bool for value in actions.values()):raise ValueError('선택·복제 표시 설정을 확인해주세요.')
   field_labels=raw.get('field_labels',s['field_labels'])
@@ -351,7 +353,7 @@ def settings():
   field_labels=dict(field_labels)
   empty_text=raw.get('empty_text',s['empty_text'])
   if not isinstance(empty_text,dict) or any(k not in FIELDS or k in ('photos','layout') or not isinstance(v,str) or len(v)>100 for k,v in empty_text.items()):raise ValueError('빈 내용 표시는 사진을 제외한 항목에 100자 이하로 입력해주세요.')
-  s.update(**actions,empty_text=empty_text,field_labels=field_labels,platform_deleted=sorted(deleted),detail_order=detail_order,kakao_key=kakao_key,scroll_top=scroll_top,platforms=merged,order=order,visible=visible,picker=raw['picker'],**display);c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(s,ensure_ascii=False),))
+  s.update(**actions,add_position=add_position,empty_text=empty_text,field_labels=field_labels,platform_deleted=sorted(deleted),detail_order=detail_order,kakao_key=kakao_key,scroll_top=scroll_top,platforms=merged,order=order,visible=visible,picker=raw['picker'],**display);c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(s,ensure_ascii=False),))
  return jsonify(ok=True)
 @app.get('/api/backup')
 def backup():
