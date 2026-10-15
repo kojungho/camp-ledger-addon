@@ -37,6 +37,13 @@ class ListPreferencesTest(unittest.TestCase):
     target[key]=position;self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,200)
     saved=client.get('/api/state').json['settings'];self.assertEqual((saved if key=='add_position' else saved['display'])[key],position)
    target[key]='invalid';self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,400)
+ def test_ledger_selection_pc_mobile_independent(self):
+  client=ledger.app.test_client();settings=client.get('/api/state').json['settings'];d=settings['display'];d['selectionPcEnabled']=True;d['selectionMobileEnabled']=False
+  self.assertEqual(client.put('/api/settings',json=settings,headers=self.h).status_code,200)
+  saved=client.get('/api/state').json['settings']['display'];self.assertTrue(saved['selectionPcEnabled']);self.assertFalse(saved['selectionMobileEnabled'])
+  d['selectionPcEnabled']=False;d['selectionMobileEnabled']=True;self.assertEqual(client.put('/api/settings',json=settings,headers=self.h).status_code,200)
+  saved=client.get('/api/state').json['settings']['display'];self.assertFalse(saved['selectionPcEnabled']);self.assertTrue(saved['selectionMobileEnabled'])
+  d['selectionMobileEnabled']='false';self.assertEqual(client.put('/api/settings',json=settings,headers=self.h).status_code,400)
  def test_ledger_blank_labels_empty_text_selection_and_photo_size(self):
   client=ledger.app.test_client();s=client.get('/api/state').json['settings'];d=s['display'];d.update(fieldLabels={'name':'','buyer':'  '},emptyText={'notes':'없음','buyer':''},photoSize=100,selectionEnabled=False)
   self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,200)

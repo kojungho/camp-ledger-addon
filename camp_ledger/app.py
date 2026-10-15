@@ -46,7 +46,7 @@ def normalize_settings(s):
         if key not in d: d[key]=list(DEFAULT['display'][key]) if isinstance(DEFAULT['display'][key],list) else DEFAULT['display'][key]
     if 'columnOrder' in d:
         d['columnOrder']=[k for k in d['columnOrder'] if k in DISPLAY_LABELS]+[k for k in DISPLAY_LABELS if k not in d['columnOrder']]
-    d.setdefault('addButtonPosition','bottom-right');d.setdefault('fieldLabels',{});d.setdefault('emptyText',{});d.setdefault('photoSize',42);d.setdefault('selectionEnabled',True)
+    d.setdefault('addButtonPosition','bottom-right');d.setdefault('fieldLabels',{});d.setdefault('emptyText',{});d.setdefault('photoSize',42);d.setdefault('selectionEnabled',True);d.setdefault('selectionPcEnabled',d['selectionEnabled']);d.setdefault('selectionMobileEnabled',d['selectionEnabled'])
     mobile=d.setdefault('mobile',{})
     if not isinstance(mobile,dict):raise ValueError('모바일 화면 설정을 확인해주세요.')
     for key,value in DEFAULT['display']['mobile'].items():mobile.setdefault(key,{} if key=='columns' else value)
@@ -236,6 +236,7 @@ def valid_settings(s):
         values=d[key]
         if not isinstance(values,dict) or any(k not in DISPLAY_LABELS or (key=='emptyText' and k=='photos') or not isinstance(v,str) or len(v)>limit for k,v in values.items()):raise ValueError('항목 이름·빈 내용 표시 설정을 확인해주세요.')
     if type(d['photoSize']) is not int or not 20<=d['photoSize']<=200:raise ValueError('사진 크기는 20~200px입니다.')
+    if any(type(d[k]) is not bool for k in ('selectionPcEnabled','selectionMobileEnabled')):raise ValueError('PC·모바일 선택 기능 설정을 확인해주세요.')
     if type(d['selectionEnabled']) is not bool:raise ValueError('선택 기능 설정을 확인해주세요.')
     limits={'cellVerticalPadding':(0,60),'rowHeight':(24,200),'bodyWeight':(100,900),'headerWeight':(100,900),'titleWeight':(100,900),'detailWeight':(100,900),'headerHeight':(20,120),'headerFont':(10,30),'headerPadding':(0,40),'cellPadding':(0,60),'detailFont':(12,30),'titleFont':(20,48)}
     for k,(low,high) in limits.items():
