@@ -136,3 +136,6 @@ stay-status.js는 한국 시간의 달력 날짜로 입실 전 이용전, 입실
 ## 1.1.30
 reservation-mapper.js는 현재 검토 값에 포함되지 않은 원문 줄을 표시하고 대상 기록·항목·처리 방식을 고르게 합니다. 현재 값/적용 후 값을 textContent로 비교하고 명시적 적용 시 검토 카드만 변경합니다. 실제 저장은 기존 일괄/개별 저장을 사용합니다. 숫자·날짜·웹 링크는 형식을 확인하며 연도 없는 날짜는 한국 현재 연도입니다. 메모는 기존 값 뒤에 추가할 수 있고 줄을 제외하거나 다른 기록에 재사용할 수 있습니다. 원문 수정·검토 초안은 기존 흐름을 유지합니다.
 전체 지도 Kakao CustomOverlay는 축척 조건 없이 지도에 붙고 camping SVG 마크의 좌표 바로 아래 이름을 표시합니다. 좌표 고정점은 CSS 변환으로 마크 크기가 달라도 유지합니다. Leaflet도 캠핑 SVG 및 영구 하단 이름을 사용합니다. desktop/display_mobile 각각 map_marker_size(16~96), map_label_size(8~40), map_button_size(8~40)를 저장합니다. 설정에 기본값만 보충하며 기존 기록·기기·기존 설정은 변경하지 않습니다.
+
+## 1.1.31
+각 desktop/display_mobile의 map_label_gap을 0~80 정수로 저장하며 기본값은 3입니다. 값 0은 nullish 병합으로 유지합니다. Kakao 이름의 top 및 Leaflet 하단 tooltip margin에 같은 CSS 변수를 적용해 현재 화면 설정을 사용합니다. 모바일 플랫폼은 별도 상단 블록에서 제거하고 information 순회 내 platform 항목으로 표시하여 다른 내용과 같은 순서·표시 설정을 적용합니다.
