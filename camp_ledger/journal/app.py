@@ -51,7 +51,7 @@ def upgrade_columns(settings):
 def get_settings(c):
  s=upgrade_columns(json.loads(c.execute('SELECT body FROM settings WHERE id=1').fetchone()[0]));s.setdefault('platforms',list(DEFAULT_PLATFORMS));s.setdefault('scroll_top','bottom-right');s['scroll_top']={'left-top':'top-left','right-top':'top-right','left-bottom':'bottom-left','right-bottom':'bottom-right','left-middle':'bottom-left','right-middle':'bottom-right'}.get(s['scroll_top'],s['scroll_top']);s.setdefault('add_position','bottom-right');s.setdefault('add_label','캠핑 기록 추가');s.setdefault('kakao_key','');s.setdefault('detail_order',list(DETAIL_FIELDS));s.setdefault('field_labels',{});s.setdefault('selection_enabled',True);s.setdefault('duplicate_enabled',True);s.setdefault('detail_duplicate_enabled',s['duplicate_enabled']);s.setdefault('click_actions',{'list':{'name':{'copy':False,'map':True},'location':{'copy':False,'map':True}},'detail':{'name':{'copy':True,'map':False},'location':{'copy':True,'map':False}}})
  for mode in ('desktop','display_mobile'):
-  s[mode].setdefault('link_size',20);s[mode].setdefault('order',list(s['order']) if mode=='desktop' else ['name','site','checkin','checkout','nights','location','price','notes','platform','booking_url','map_url','photos','layout','rating']);s[mode].setdefault('rating_size',16);s[mode].setdefault('rating_spacing',3);s[mode].setdefault('visible',dict(s['visible']));s[mode].setdefault('photo_size',38);s[mode].setdefault('row_height',0);s[mode].setdefault('layout_caption',False);s[mode].setdefault('layout_size',56)
+  s[mode].setdefault('link_size',20);s[mode].setdefault('order',list(s['order']) if mode=='desktop' else ['name','site','checkin','checkout','nights','location','price','notes','platform','booking_url','map_url','photos','layout','rating']);s[mode].setdefault('map_marker_size',32);s[mode].setdefault('map_label_size',12);s[mode].setdefault('map_button_size',11);s[mode].setdefault('rating_size',16);s[mode].setdefault('rating_spacing',3);s[mode].setdefault('visible',dict(s['visible']));s[mode].setdefault('photo_size',38);s[mode].setdefault('row_height',0);s[mode].setdefault('layout_caption',False);s[mode].setdefault('layout_size',56)
  s.setdefault('floating',{mode:{'addScale':100,'addFont':14,'topScale':100,'topFont':24} for mode in ('pc','mobile')})
  s.setdefault('empty_text',{});s.setdefault('default_sort',{'key':'','direction':'desc'})
  return s
@@ -403,7 +403,12 @@ def settings():
   if type(rating_size)!=int or not 8<=rating_size<=48:raise ValueError('평가 글자 크기는 8~48px입니다.')
   rating_spacing=x.get('rating_spacing',3)
   if type(rating_spacing)!=int or not 0<=rating_spacing<=40:raise ValueError('평가 위아래 여백은 0~40px입니다.')
-  display[key]={'rating_spacing':rating_spacing,'rating_size':rating_size,'layout_size':layout_size,'layout_caption':layout_caption,'row_height':row_height,'font':font,'padding':padding,'widths':widths,'link_size':link_size,'order':mode_order,'visible':mode_visible,'photo_size':photo_size}
+  map_display={}
+  for field,default,minimum,maximum in [('map_marker_size',32,16,96),('map_label_size',12,8,40),('map_button_size',11,8,40)]:
+   value=x.get(field,default)
+   if type(value)!=int or not minimum<=value<=maximum:raise ValueError('지도 크기 설정 범위를 확인해주세요.')
+   map_display[field]=value
+  display[key]={**map_display,'rating_spacing':rating_spacing,'rating_size':rating_size,'layout_size':layout_size,'layout_caption':layout_caption,'row_height':row_height,'font':font,'padding':padding,'widths':widths,'link_size':link_size,'order':mode_order,'visible':mode_visible,'photo_size':photo_size}
  if raw.get('picker') not in ('files','gallery'):raise ValueError('사진 선택 방식을 확인해주세요.')
  with connection() as c:
   c.execute('BEGIN IMMEDIATE');s=get_settings(c);platforms=raw.get('platforms',s['platforms'])
