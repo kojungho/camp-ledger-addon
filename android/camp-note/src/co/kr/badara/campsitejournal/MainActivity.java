@@ -59,6 +59,7 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void setEditing(boolean value){if(ledger)ledgerEditing=value;else journalEditing=value;editing=journalEditing||ledgerEditing;if(!editing&&updater!=null)runOnUiThread(()->updater.maybeInstall());}
         @JavascriptInterface public void flushCookies(){CookieManager.getInstance().flush();}
         @JavascriptInterface public String getVersion() {return appVersion();}
+        @JavascriptInterface public void openMapUrl(String url){runOnUiThread(()->{try{if(!openMappingUri(Uri.parse(url)))Toast.makeText(MainActivity.this,"지도 연결 주소를 확인해주세요.",Toast.LENGTH_SHORT).show();}catch(Exception ignored){}});}
     }
     private String appVersion(){try{return getPackageManager().getPackageInfo(getPackageName(),0).versionName;}catch(Exception e){return "";}}
     private String key;
@@ -77,6 +78,23 @@ public class MainActivity extends Activity {
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);setIntent(intent);String previousKey=key;handleIntent(intent);
         if(key!=null&&(web==null||!key.equals(previousKey)))showLedger();
+    }
+    private boolean openMappingUri(Uri uri){
+        String fallback=null;Uri destination=uri;
+        try{if("intent".equals(uri.getScheme())){Intent parsed=Intent.parseUri(uri.toString(),Intent.URI_INTENT_SCHEME);destination=parsed.getData();fallback=parsed.getStringExtra("browser_fallback_url");}}catch(Exception error){return false;}
+        if(destination==null)return false;
+        String scheme=destination.getScheme(),packageName;
+        if("kakaomap".equals(scheme))packageName="net.daum.android.map";
+        else if("nmap".equals(scheme))packageName="com.nhn.android.nmap";
+        else if("kakaonavi-sdk".equals(scheme)||"kakaonavi".equals(scheme))packageName="com.locnall.KimGiSa";
+        else return false;
+        try{startActivity(new Intent(Intent.ACTION_VIEW,destination).setPackage(packageName).addCategory(Intent.CATEGORY_BROWSABLE));}
+        catch(Exception unavailable){
+            Uri backup=fallback==null?null:Uri.parse(fallback);String host=backup==null?null:backup.getHost();
+            if(backup==null||!"https".equals(backup.getScheme())||!("kakaonavi.kakao.com".equals(host)||"play.google.com".equals(host)))backup=Uri.parse("https://play.google.com/store/apps/details?id="+packageName);
+            try{startActivity(new Intent(Intent.ACTION_VIEW,backup));Toast.makeText(this,"지도 앱 설치 안내를 엽니다.",Toast.LENGTH_SHORT).show();}catch(Exception ignored){Toast.makeText(this,"지도 앱을 설치한 뒤 다시 선택해주세요.",Toast.LENGTH_LONG).show();}
+        }
+        return true;
     }
     private void handleIntent(Intent intent) {
         Uri uri=intent.getData();
@@ -126,7 +144,7 @@ public class MainActivity extends Activity {
         CookieManager cookies=CookieManager.getInstance();cookies.setAcceptCookie(true);cookies.setAcceptThirdPartyCookies(web,false);
         web.setWebViewClient(new WebViewClient(){
             @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){
-                Uri uri=request.getUrl();if(!request.isForMainFrame()){return !("https".equals(uri.getScheme())&&(("ha.badara.co.kr".equals(uri.getHost())&&(uri.getPath().startsWith("/campsite-journal/")||uri.getPath().startsWith("/camp-ledger/")))||"postcode.map.kakao.com".equals(uri.getHost())||"postcode.map.daum.net".equals(uri.getHost())||"www.openstreetmap.org".equals(uri.getHost()))); }if("https".equals(uri.getScheme())&&"ha.badara.co.kr".equals(uri.getHost())&&(uri.getPath().startsWith("/campsite-journal/")||uri.getPath().startsWith("/camp-ledger/")))return false;
+                Uri uri=request.getUrl();if(openMappingUri(uri))return true;if(!request.isForMainFrame()){return !("https".equals(uri.getScheme())&&(("ha.badara.co.kr".equals(uri.getHost())&&(uri.getPath().startsWith("/campsite-journal/")||uri.getPath().startsWith("/camp-ledger/")))||"postcode.map.kakao.com".equals(uri.getHost())||"postcode.map.daum.net".equals(uri.getHost())||"www.openstreetmap.org".equals(uri.getHost()))); }if("https".equals(uri.getScheme())&&"ha.badara.co.kr".equals(uri.getHost())&&(uri.getPath().startsWith("/campsite-journal/")||uri.getPath().startsWith("/camp-ledger/")))return false;
                 try{startActivity(new Intent(Intent.ACTION_VIEW,uri));}catch(Exception ignored){}return true;
             }
             @Override public void onReceivedError(WebView view,WebResourceRequest request,WebResourceError error){if(request.isForMainFrame())Toast.makeText(MainActivity.this,"기록에 연결하지 못했습니다. 인터넷 연결을 확인해주세요.",Toast.LENGTH_LONG).show();}

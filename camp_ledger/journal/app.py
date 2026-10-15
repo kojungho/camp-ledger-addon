@@ -54,7 +54,7 @@ def guard():
 def headers(r):
  r.headers['X-Content-Type-Options']='nosniff';r.headers['Referrer-Policy']='strict-origin-when-cross-origin';r.headers['Cache-Control']='no-store' if request.path.startswith('/api/') else 'no-cache'
  if request.method in ('POST','PUT','DELETE') and request.path.startswith('/api/') and r.status_code<400 and request.path!='/api/import/preview':live_sync.publish()
- r.headers['Content-Security-Policy']="default-src 'self'; img-src 'self' data: blob: https://tile.openstreetmap.org https://*.kakao.com https://*.daumcdn.net https://*.daum.net https://*.kakaocdn.net; style-src 'self' 'unsafe-inline'; script-src 'self' https://dapi.kakao.com https://*.daumcdn.net https://*.daum.net https://*.kakaocdn.net; connect-src 'self' https://*.kakao.com https://*.daumcdn.net https://*.daum.net; frame-src 'self' https://www.openstreetmap.org https://postcode.map.kakao.com https://postcode.map.daum.net; base-uri 'self'; form-action 'self'"
+ r.headers['Content-Security-Policy']="default-src 'self'; img-src 'self' data: blob: https://tile.openstreetmap.org https://*.kakao.com https://*.daumcdn.net https://*.daum.net https://*.kakaocdn.net; style-src 'self' 'unsafe-inline'; script-src 'self' https://dapi.kakao.com https://*.daumcdn.net https://*.daum.net https://*.kakaocdn.net; connect-src 'self' https://*.kakao.com https://*.daumcdn.net https://*.daum.net; frame-src 'self' kakaonavi-sdk: kakaomap: nmap: intent: https://kakaonavi.kakao.com https://www.openstreetmap.org https://postcode.map.kakao.com https://postcode.map.daum.net; base-uri 'self'; form-action 'self'"
  return r
 @app.errorhandler(ValueError)
 def invalid(e):return jsonify(error=str(e)),400

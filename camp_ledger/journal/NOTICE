@@ -2,3 +2,10 @@ Leaflet 1.9.4 © Vladimir Agafonkin and contributors. BSD-2-Clause license inclu
 Device pairing and Android shell adapted from kojungho/camp-ledger-addon.
 
 Campsite catalog: Korea Tourism Organization, national campsite registration dataset 2026-09-23, https://www.data.go.kr/data/15037499/fileData.do; Korea Culture Information Service, camping facilities dataset 2022-11-30, https://www.data.go.kr/data/15111395/fileData.do. Both datasets permit unrestricted reuse. Only campsite names, public addresses, and geographic coordinates are included.
+
+Map app chooser icons: official Google Play app-listing artwork for KakaoNavi
+(com.locnall.KimGiSa), KakaoMap (net.daum.android.map), and NAVER Map
+(com.nhn.android.nmap). Logos identify the external apps; marks belong to their
+respective owners. Source: https://play.google.com/store/apps/details?id=<package>
+External launch protocols follow Kakao's JavaScript Navi and KakaoMap URL-scheme
+references, and NAVER Cloud's map URL-scheme guide.
