@@ -26,7 +26,7 @@
   }
   Object.assign(context,{active:enabled,searched:false,applied:null,linkTouched:false,onInherit});
   const link=target.elements.booking_url;
-  if(!context.watched.has(link)){context.watched.add(link);link.addEventListener('input',event=>{if(event.isTrusted)context.linkTouched=true});}
+  if(!context.watched.has(link)){context.watched.add(link);for(const type of ['input','paste'])link.addEventListener(type,event=>{if(event.isTrusted)context.linkTouched=true});}
   for(const key of ['name','location','platform']){
    const input=target.elements[key];if(context.watched.has(input))continue;context.watched.add(input);
    input.addEventListener('input',context.apply);input.addEventListener('change',context.apply);
