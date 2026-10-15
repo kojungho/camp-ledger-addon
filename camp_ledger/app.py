@@ -717,7 +717,7 @@ def restore():
     return jsonify(ok=True)
 
 from integrated import install_integration,combined_app
-install_integration(app,mobile)
+install_integration(app,mobile,conn,settings)
 
 if __name__=='__main__':
     from waitress import serve

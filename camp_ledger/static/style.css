@@ -87,3 +87,5 @@ body[data-camp-hub="1"] #settings,body[data-camp-hub="1"] #install,body[data-cam
 @media(max-width:760px){:root{--float-add-scale:calc(var(--float-mobile-addScale,100) / 100);--float-add-font:var(--float-mobile-addFont,14px);--float-top-scale:calc(var(--float-mobile-topScale,100) / 100);--float-top-font:var(--float-mobile-topFont,24px)}}
 
 .product-thumb-slot{display:inline-block;width:42px;height:42px;flex:none;visibility:hidden}@media(min-width:761px){#gear-table .product-thumb-slot{width:var(--ledger-photo-size,42px);height:var(--ledger-photo-size,42px)}}@media(max-width:760px){.ledger>.toolbar{padding-bottom:5px}.mobile-gear-list{padding-top:5px}.mobile-select-all{margin-top:0;margin-bottom:6px}}
+
+#mobile-install-section{display:none!important}

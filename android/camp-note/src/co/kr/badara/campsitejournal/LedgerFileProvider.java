@@ -15,7 +15,7 @@ public final class LedgerFileProvider extends ContentProvider {
     @Override public boolean onCreate(){return true;}
     private File file(Uri uri) throws FileNotFoundException {
         String group=uri.getPathSegments().size()==2?uri.getPathSegments().get(0):"",name=uri.getLastPathSegment();
-        if(!uri.getAuthority().equals(getContext().getPackageName()+".files")||name==null||name.contains("/")||name.equals("..")||name.equals(".")||!("photos".equals(group)||("updates".equals(group)&&"campsite-journal.apk".equals(name))))throw new FileNotFoundException();
+        if(!uri.getAuthority().equals(getContext().getPackageName()+".files")||name==null||name.contains("/")||name.equals("..")||name.equals(".")||!("photos".equals(group)||("updates".equals(group)&&("camp-note.apk".equals(name)||"campsite-journal.apk".equals(name)))))throw new FileNotFoundException();
         File result=new File(new File(getContext().getCacheDir(),group),name);if(!result.isFile())throw new FileNotFoundException();return result;
     }
     public static Uri uri(android.content.Context context,String group,File file){return new Uri.Builder().scheme("content").authority(context.getPackageName()+".files").appendPath(group).appendPath(file.getName()).build();}

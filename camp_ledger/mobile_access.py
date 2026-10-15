@@ -19,6 +19,8 @@ def install_mobile(app, connection, get_settings, data_dir):
     with connection() as c:
         c.execute('CREATE TABLE IF NOT EXISTS devices(id TEXT PRIMARY KEY,name TEXT NOT NULL,token_hash TEXT NOT NULL UNIQUE,created REAL NOT NULL,last_used REAL)')
 
+    def shared():return app.config.get('CAMP_SHARED_ACCESS') if request.environ.get('camp.unified') else None
+
     def admin():
         port=str(request.environ.get('SERVER_PORT',''))
         channel=request.environ.get('camp.entrypoint') or ('external' if port=='8098' else 'ingress')
@@ -31,11 +33,13 @@ def install_mobile(app, connection, get_settings, data_dir):
         with connection() as c:
             prefs=config(c)
             devices=[dict(r) for r in c.execute('SELECT id,name,created,last_used FROM devices ORDER BY created DESC')] if admin() else []
+        if shared() and admin():devices=shared().devices()
         return {**prefs,'admin':admin(),'devices':devices,'apk_available':(Path(app.static_folder)/'downloads/camp-ledger.apk').exists()}
 
     def valid_key(key,c):
         if not isinstance(key,str) or len(key)<32 or len(key)>100: return None
-        return c.execute('SELECT id,last_used FROM devices WHERE token_hash=?',(hashlib.sha256(key.encode()).hexdigest(),)).fetchone()
+        own=c.execute('SELECT id,last_used FROM devices WHERE token_hash=?',(hashlib.sha256(key.encode()).hexdigest(),)).fetchone()
+        return own or (shared().valid_peer(key) if shared() else None)
 
     def guard():
         if admin(): return None
@@ -73,6 +77,7 @@ def install_mobile(app, connection, get_settings, data_dir):
         with connection() as c:
             c.execute('BEGIN IMMEDIATE'); s=get_settings(c); s['mobile']={'enabled':raw['enabled'],'external_url':url}
             c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(s,ensure_ascii=False),))
+        if shared():shared().sync_config({'enabled':raw['enabled'],'external_url':url})
         return jsonify(status())
 
     @app.post('/api/mobile/devices')
@@ -92,25 +97,28 @@ def install_mobile(app, connection, get_settings, data_dir):
     @app.post('/api/mobile/devices/<ident>/revoke')
     def mobile_revoke(ident):
         require_admin()
+        if shared():shared().revoke(ident);return jsonify(ok=True)
         with connection() as c: c.execute('DELETE FROM devices WHERE id=?',(ident,))
         return jsonify(ok=True)
 
     @app.post('/api/mobile/session')
     def mobile_session():
-        raw=request.get_json() or {}; key=raw.get('key')
+        raw=request.get_json() or {}; key=raw.get('key') or (request.cookies.get(COOKIE) if shared() else None)
+        if shared() and admin() and not key:return jsonify(ok=True)
         with connection() as c:
             prefs=config(c)
             if not prefs['enabled'] or not valid_key(key,c): abort(401,description='연결키가 만료되었거나 해제되었습니다. 애드온에서 다시 연결해주세요.')
         response=jsonify(ok=True)
+        if shared():return shared().cookies(response,key)
         response.set_cookie(COOKIE,key,max_age=60*60*24*365*5,secure=True,httponly=True,samesite='Strict',path=urlparse(prefs['external_url']).path or '/')
         return response
 
     @app.get('/api/mobile/apk')
     def mobile_apk():
         require_admin()
-        path=Path(app.static_folder)/'downloads/camp-ledger.apk'
-        if not path.exists(): abort(404,description='설치 파일을 준비 중입니다.')
-        return send_file(path,as_attachment=True,download_name='camp-ledger.apk',mimetype='application/vnd.android.package-archive')
+        path=shared().apk() if shared() else Path(app.static_folder)/'downloads/camp-note.apk'
+        if not path.exists():abort(404,description='설치 파일을 준비 중입니다.')
+        return send_file(path,as_attachment=True,download_name='camp-note.apk',mimetype='application/vnd.android.package-archive')
 
     @app.get('/api/mobile/bridge')
     def mobile_bridge():

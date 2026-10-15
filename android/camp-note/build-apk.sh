@@ -14,9 +14,9 @@ jar cf "$build_dir/classes.jar" -C "$build_dir/classes" .
 "$build_tools/d8" --min-api 29 --lib "$android_jar" --output "$build_dir/dex" "$build_dir/classes.jar"
 (cd "$build_dir/dex" && zip -q "$build_dir/unsigned.apk" classes.dex)
 "$build_tools/zipalign" -p -f 4 "$build_dir/unsigned.apk" "$build_dir/aligned.apk"
-"$build_tools/apksigner" sign --ks "${CAMP_APK_KEYSTORE:?Set CAMP_APK_KEYSTORE}" --ks-key-alias campsite-journal --ks-pass env:CAMP_APK_STOREPASS --key-pass env:CAMP_APK_STOREPASS --out "$build_dir/campsite-journal.apk" "$build_dir/aligned.apk"
-"$build_tools/apksigner" verify --verbose "$build_dir/campsite-journal.apk"
-python3 - "$src_dir/AndroidManifest.xml" "$build_dir/campsite-journal.apk" "$build_dir/android-version.json" <<'PY'
+"$build_tools/apksigner" sign --ks "${CAMP_APK_KEYSTORE:?Set CAMP_APK_KEYSTORE}" --ks-key-alias campsite-journal --ks-pass env:CAMP_APK_STOREPASS --key-pass env:CAMP_APK_STOREPASS --out "$build_dir/camp-note.apk" "$build_dir/aligned.apk"
+"$build_tools/apksigner" verify --verbose "$build_dir/camp-note.apk"
+python3 - "$src_dir/AndroidManifest.xml" "$build_dir/camp-note.apk" "$build_dir/android-version.json" <<'PY'
 import hashlib,json,sys,xml.etree.ElementTree as ET
 from pathlib import Path
 manifest=ET.parse(sys.argv[1]).getroot();android='{http://schemas.android.com/apk/res/android}'
