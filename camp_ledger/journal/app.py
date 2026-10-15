@@ -75,12 +75,16 @@ def state():
  with connection() as c:
   rows=[{**json.loads(r['body']),'id':r['id'],'photos':[dict(p) for p in c.execute('SELECT * FROM photos WHERE record_id=?',(r['id'],))]} for r in c.execute('SELECT * FROM records ORDER BY rowid DESC')]
   return jsonify(records=rows,settings=get_settings(c),admin=mobile['admin'](),version=os.getenv('JOURNAL_VERSION','1.0.0'))
+def checked_rating(value):
+ if type(value) is not int or not 0<=value<=5:raise ValueError('평가는 0~5점으로 선택해주세요.')
+ return value
 def clean(raw):
  if not isinstance(raw,dict):raise ValueError('기록 형식이 올바르지 않습니다.')
  b={k:raw.get(k,'') for k in FIELDS if k not in ('photos','layout','nights')}
  for k,v in b.items():
   if not isinstance(v,(str,int,float)) or len(str(v))>10000:raise ValueError('입력값이 너무 길거나 올바르지 않습니다.')
   if k!='price':b[k]=str(v).strip()
+ if 'rating' in raw:b['rating']=checked_rating(raw['rating'])
  if not b['name']:raise ValueError('캠핑장명을 입력해주세요.')
  for k in ('booking_url','map_url'):
   if b[k] and not b[k].startswith(('https://','http://')):raise ValueError('링크는 https:// 또는 http://로 시작해야 합니다.')
@@ -168,7 +172,9 @@ def update(ident):
  b=clean(request.get_json())
  with connection() as c:
   c.execute('BEGIN IMMEDIATE')
-  if not c.execute('SELECT 1 FROM records WHERE id=?',(ident,)).fetchone():abort(404)
+  previous=c.execute('SELECT body FROM records WHERE id=?',(ident,)).fetchone()
+  if not previous:abort(404)
+  if 'rating' not in b and 'rating' in json.loads(previous['body']):b['rating']=json.loads(previous['body'])['rating']
   reject_duplicate(c,b,ident)
   if not c.execute('UPDATE records SET body=? WHERE id=?',(json.dumps(b,ensure_ascii=False),ident)).rowcount:abort(404)
  return jsonify(ok=True)
@@ -227,6 +233,9 @@ def save_with_photos():
   with connection() as c:
    c.execute('BEGIN IMMEDIATE');owner=ident or source
    if owner and not c.execute('SELECT 1 FROM records WHERE id=?',(owner,)).fetchone():raise ValueError('기록이 삭제되어 저장할 수 없습니다.')
+   if ident and 'rating' not in body:
+    previous=json.loads(c.execute('SELECT body FROM records WHERE id=?',(ident,)).fetchone()['body'])
+    if 'rating' in previous:body['rating']=previous['rating']
    reject_duplicate(c,body,ident)
    existing={p['id']:dict(p) for p in c.execute('SELECT * FROM photos WHERE record_id=?',(owner,))} if owner else {}
    if not set(keep_values)<=set(existing) or not set(remove)<=set(existing) or set(remove)&set(keep_values) or remove and not ident:raise ValueError('현재 기록에 속한 사진만 저장할 수 있습니다.')
@@ -282,6 +291,18 @@ def photo(pid):
  with connection() as c:
   if not c.execute('SELECT 1 FROM photos WHERE id=?',(pid,)).fetchone():abort(404)
  return send_file(MEDIA/(pid+'.jpg'),mimetype='image/jpeg')
+@app.put('/api/records/<ident>/rating')
+def set_rating(ident):
+ raw=request.get_json(silent=True)
+ if not isinstance(raw,dict):raise ValueError('평가를 선택해주세요.')
+ rating=checked_rating(raw.get('rating'))
+ with connection() as c:
+  c.execute('BEGIN IMMEDIATE')
+  row=c.execute('SELECT body FROM records WHERE id=?',(ident,)).fetchone()
+  if not row:abort(404)
+  body=json.loads(row['body']);body['rating']=rating
+  c.execute('UPDATE records SET body=? WHERE id=?',(json.dumps(body,ensure_ascii=False),ident))
+ return jsonify(ok=True,rating=rating)
 @app.put('/api/records/<ident>/cover')
 def set_cover(ident):
  raw=request.get_json(silent=True)

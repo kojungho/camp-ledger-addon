@@ -145,6 +145,19 @@ class JournalTest(unittest.TestCase):
   result=self.client.post('/api/records/save',data={'record':json.dumps(raw),'pic':(image,'cover.png')},headers=self.headers);self.assertEqual(result.status_code,201);original=self.client.get('/api/state').json['records'][0];self.assertEqual(original['photos'][0]['is_cover'],1)
   files=set(MEDIA.iterdir());raw={'id':original['id'],'fields':{'name':'실패'},'keep':[{'id':original['photos'][0]['id']}],'cover':'missing'}
   self.assertEqual(self.client.post('/api/records/save',data={'record':json.dumps(raw)},headers=self.headers).status_code,400);self.assertEqual(self.client.get('/api/state').json['records'][0],original);self.assertEqual(set(MEDIA.iterdir()),files)
+ def test_rating_validation_preserves_fields_and_survives_edit(self):
+  ident=self.record();before=self.client.get('/api/state').json['records'][0]
+  for value in (-1,6,2.5,True,'4',None):
+   self.assertEqual(self.client.put('/api/records/'+ident+'/rating',json={'rating':value},headers=self.headers).status_code,400)
+  self.assertEqual(self.client.put('/api/records/'+ident+'/rating',json={'rating':4}).status_code,403)
+  self.assertEqual(self.client.put('/api/records/missing/rating',json={'rating':4},headers=self.headers).status_code,404)
+  self.assertEqual(self.client.put('/api/records/'+ident+'/rating',json={'rating':4},headers=self.headers).status_code,200)
+  rated=self.client.get('/api/state').json['records'][0];self.assertEqual(rated.pop('rating'),4);self.assertEqual(rated,before)
+  raw={'id':ident,'fields':{'name':'평가 유지 수정'},'keep':[],'uploads':[],'cover':None}
+  self.assertEqual(self.client.post('/api/records/save',data={'record':json.dumps(raw)},headers=self.headers).status_code,200)
+  self.assertEqual(self.client.get('/api/state').json['records'][0]['rating'],4)
+  self.assertEqual(self.client.put('/api/records/'+ident,json={'name':'일반 수정'},headers=self.headers).status_code,200);self.assertEqual(self.client.get('/api/state').json['records'][0]['rating'],4)
+  self.assertEqual(self.client.put('/api/records/'+ident+'/rating',json={'rating':0},headers=self.headers).status_code,200);self.assertEqual(self.client.get('/api/state').json['records'][0]['rating'],0)
  def test_editor_rejects_foreign_photo_and_requires_auth(self):
   first=self.record(name='첫 기록');second=self.record(name='두 번째');stream=io.BytesIO();Image.new('RGB',(10,10),'green').save(stream,'PNG');stream.seek(0);self.client.post('/api/records/'+second+'/photos/gallery',data={'photos':(stream,'photo.png')},headers=self.headers);photo=next(r for r in self.client.get('/api/state').json['records'] if r['id']==second)['photos'][0]['id'];raw={'id':first,'fields':{'name':'잘못된 변경'},'keep':[{'id':photo,'memo':''}],'uploads':[]}
   self.assertEqual(self.client.post('/api/records/save',data={'record':json.dumps(raw)},headers=self.headers).status_code,400);self.assertEqual(next(r for r in self.client.get('/api/state').json['records'] if r['id']==first)['name'],'첫 기록');self.assertEqual(self.client.post('/api/records/save',data={'record':json.dumps(raw)}).status_code,403)
