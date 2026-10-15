@@ -99,3 +99,5 @@ body>header{border-bottom:0}
 @media(max-width:700px){:root{--float-add-scale:calc(var(--float-mobile-addScale,100) / 100);--float-add-font:var(--float-mobile-addFont,14px);--float-top-scale:calc(var(--float-mobile-topScale,100) / 100);--float-top-font:var(--float-mobile-topFont,24px)}}
 
 .address-app-choices{grid-template-columns:repeat(3,minmax(0,1fr))}
+
+#quickPairResult img{display:block;max-width:240px;width:100%;margin:12px auto}#quickPairResult .quick-pair-link{display:flex;margin:12px 0}.manual-pair-settings{margin:20px 0;padding:12px 0;border-top:1px solid var(--border)}#quickPairDevice{min-height:44px}#quickConnectActions .button{margin:12px 0}

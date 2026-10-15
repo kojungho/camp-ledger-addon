@@ -44,7 +44,7 @@ def install_mobile(app, connection, get_settings, data_dir):
     def guard():
         if admin(): return None
         if request.environ.get('journal.entrypoint')!='external' and str(request.environ.get('SERVER_PORT'))!='8098': abort(403)
-        public=request.path in ('/api/mobile/session','/api/mobile/health','/manifest.webmanifest','/service-worker.js') or request.path.startswith('/static/')
+        public=request.path in ('/connect','/api/mobile/session','/api/mobile/health','/manifest.webmanifest','/service-worker.js') or request.path.startswith('/static/')
         if public: return None
         with connection() as c:
             prefs=config(c)
@@ -59,6 +59,9 @@ def install_mobile(app, connection, get_settings, data_dir):
 
     def require_admin():
         if not admin(): abort(403,description='이 설정은 Home Assistant 안에서만 변경할 수 있습니다.')
+
+    @app.get('/connect')
+    def quick_connect_page():return app.send_static_file('mobile-connect.html')
 
     @app.get('/api/mobile/health')
     def mobile_health(): return jsonify(service='campsite-journal',status='ready')
@@ -89,8 +92,9 @@ def install_mobile(app, connection, get_settings, data_dir):
             prefs=config(c)
             if not prefs['enabled'] or not prefs['external_url']: raise ValueError('외부 앱 주소를 먼저 설정해주세요.')
             c.execute('INSERT INTO devices VALUES(?,?,?,?,NULL)',(ident,name.strip(),hashlib.sha256(key.encode()).hexdigest(),time.time()))
-        link=prefs['external_url']+'#key='+key
-        native='intent://connect?url='+quote(prefs['external_url'],safe='')+'#Intent;scheme=campsite-journal;package=co.kr.badara.campsitejournal;S.key='+key+';S.browser_fallback_url='+quote(link,safe='')+';end'
+        link=prefs['external_url']+'connect#key='+key
+        fallback=prefs['external_url']+'connect?browser=1#key='+key
+        native='intent://connect?url='+quote(prefs['external_url'],safe='')+'#Intent;scheme=campsite-journal;package=co.kr.badara.campsitejournal;S.key='+key+';S.browser_fallback_url='+quote(fallback,safe='')+';end'
         qr=qrcode.make(native if (request.get_json() or {}).get('platform')=='android' else link); buf=io.BytesIO(); qr.save(buf,format='PNG')
         return jsonify(id=ident,name=name.strip(),token=key,url=prefs['external_url'],link=link,native=native,qr='data:image/png;base64,'+base64.b64encode(buf.getvalue()).decode())
 

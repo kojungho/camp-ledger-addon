@@ -27,3 +27,7 @@ class UnifiedAccessTest(unittest.TestCase):
   key=self.key()['token'];self.assertEqual(self.external.post('/journal/api/mobile/session',json={'key':'x'*43},headers=self.h).status_code,401)
   self.assertEqual(self.admin.put('/journal/api/mobile/config',json={'enabled':False,'external_url':'https://ha.test/campsite-journal/'},headers=self.h).status_code,200)
   for path in ['/journal/api/state','/api/state']:self.assertEqual(self.external.get(path,headers={'Authorization':'Bearer '+key}).status_code,401)
+
+ def test_universal_qr_link_and_public_gateway(self):
+  created=self.admin.post('/journal/api/mobile/devices',json={'name':'QR 연결','platform':'auto'},headers=self.h);self.assertEqual(created.status_code,200);self.assertIn('/connect#key=',created.json['link']);self.assertIn('connect%3Fbrowser%3D1',created.json['native'])
+  page=self.external.get('/journal/connect');self.assertEqual(page.status_code,200);self.assertIn('id="connectApp"',page.text);self.assertIn('id="connectBrowser"',page.text);self.assertNotIn('journalTab',page.text);page.close()
