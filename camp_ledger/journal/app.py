@@ -339,7 +339,7 @@ def import_preview():
  text=result['text'] if result is not None else str((request.get_json(silent=True) or {}).get('text',''))[:50000]
  with connection() as c:existing={identity(json.loads(row['body'])) for row in c.execute('SELECT body FROM records')}
  rows=result['records'] if result is not None else parse_reservations(text)
- return jsonify(text=text,records=[{**row,'duplicate':identity(row) in existing} for row in rows])
+ return jsonify(text=text,records=[{**row,'duplicate':bool(row.get('checkin') and row.get('checkout') and identity(row) in existing)} for row in rows])
 @app.post('/api/import/text-preview')
 def import_text_preview():
  from .reservation_import import parse_reservation_text,identity
@@ -347,7 +347,7 @@ def import_text_preview():
  if not isinstance(raw,dict) or not isinstance(raw.get('text'),str) or len(raw['text'])>10000:raise ValueError('예약문자는 10,000자 이하로 붙여넣어주세요.')
  rows=parse_reservation_text(raw['text'])
  with connection() as c:existing={identity(json.loads(row['body'])) for row in c.execute('SELECT body FROM records')}
- return jsonify(records=[{**row,'duplicate':identity(row) in existing} for row in rows])
+ return jsonify(records=[{**row,'duplicate':bool(row.get('checkin') and row.get('checkout') and identity(row) in existing)} for row in rows])
 @app.post('/api/import/commit')
 def import_commit():
  from .reservation_import import identity,decode_thumbnail

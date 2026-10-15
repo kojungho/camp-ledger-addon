@@ -64,3 +64,11 @@ class ReservationTest(unittest.TestCase):
   text='평창 가야지캠핑장\n*D구역/호수뷰 15*강자갈/차박O/애견O\n입실일        퇴실일\n26. 09. 24 (목)        26. 09. 26 (토)\n다시 예약하기'
   rows=parse_reservations(text);self.assertEqual(len(rows),1);self.assertEqual(rows[0]['name'],'평창 가야지캠핑장');self.assertEqual(rows[0]['checkin'],'2026-09-24');self.assertEqual(rows[0]['checkout'],'2026-09-26');self.assertIn('호수뷰 15',rows[0]['site'])
   self.assertEqual(parse_reservations(text.replace('26. 09. 26','26. 09. 23')),[])
+ def test_timeline_partial_entries_do_not_invent_year_or_departure(self):
+  text='5.23 토\nmy 풍경소리캠핑장 * :\n캠핑,야영장ㆍ전북 정읍시 산내면\n오전 12:00ㆍ1번째 방문\n디 D4 (호수뷰,차박 불가)ㆍ140,000원\n다시 예약\n5.3 일\n= 하늘구니 더원 * :\n캠핑,야영장ㆍ대구 군위군 삼국유사면\n오전 12:00ㆍ1번째 방문\n티 3사이트 캠핑장ㆍ175,000원'
+  rows=parse_reservations(text);self.assertEqual(len(rows),2);self.assertEqual(rows[0]['name'],'풍경소리캠핑장');self.assertEqual(rows[1]['name'],'하늘구니 더원');self.assertEqual(rows[0]['price'],140000);self.assertEqual(rows[1]['price'],175000);self.assertEqual(rows[0]['site'],'D4 (호수뷰,차박 불가)');self.assertEqual(rows[1]['location'],'대구 군위군 삼국유사면');self.assertEqual(rows[0]['date_hint'],'5.23 토');self.assertTrue(all(r['needs_dates'] and not r['checkin'] and not r['checkout'] for r in rows))
+  self.client.post('/api/records',json={'name':'풍경소리캠핑장'},headers=self.headers)
+  preview=self.client.post('/api/import/preview',json={'text':text},headers=self.headers);self.assertFalse(preview.json['records'][0]['duplicate']);self.assertEqual(len(preview.json['records']),2)
+  self.assertEqual(self.client.post('/api/import/commit',json={'records':rows},headers=self.headers).status_code,400)
+  for row,dates in zip(rows,[('2026-05-23','2026-05-25'),('2026-05-03','2026-05-05')]):row.update(checkin=dates[0],checkout=dates[1])
+  result=self.client.post('/api/import/commit',json={'records':rows},headers=self.headers);self.assertEqual(result.status_code,200);self.assertEqual(len(result.json['added']),2)

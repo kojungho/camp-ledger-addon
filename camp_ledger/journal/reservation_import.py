@@ -6,6 +6,40 @@ from PIL import Image,ImageOps,UnidentifiedImageError
 def identity(record):
  return (re.sub(r'[\W_]+','',unicodedata.normalize('NFKC',str(record.get('name','')))).casefold(),record.get('checkin',''),record.get('checkout',''))
 
+def parse_timeline(lines):
+ """Extract incomplete visit entries without inventing a year or checkout date."""
+ result=[];seen=set();date_hint=''
+ category=re.compile(r'캠핑\s*[,，.·ㆍ]?\s*야영장')
+ for i,line in enumerate(lines):
+  month_day=re.fullmatch(r'(\d{1,2})\s*[./]\s*(\d{1,2})\s*([월화수목금토일])?',line)
+  if month_day:
+   month,day=map(int,month_day.groups()[:2])
+   try:
+    from datetime import date
+    date(2000,month,day)
+   except ValueError:continue
+   date_hint=f'{month}.{day}'+(' '+month_day.group(3) if month_day.group(3) else '')
+  match=category.search(line)
+  if not match or i==0:continue
+  name=lines[i-1]
+  name=re.sub(r'^[^\w가-힣]+','',name)
+  name=re.sub(r'^[a-z]{1,3}\s+(?=[가-힣])','',name)
+  name=re.sub(r'\s*[★☆*⋮:;]+.*$','',name).strip()
+  if not name or re.search(r'방문|예약|리뷰|^\d+[./]\d+',name):continue
+  location=line[match.end():].strip(' ·ㆍ.,:：')
+  site='';price=None
+  for following in lines[i+1:i+6]:
+   if category.search(following) or re.fullmatch(r'\d{1,2}[./]\d{1,2}.*',following):break
+   amount=re.search(r'([\d,]+)\s*원',following)
+   if amount:
+    price=int(amount.group(1).replace(',',''));site=following[:amount.start()].strip(' ·ㆍ.,:：')
+    site=re.sub(r'^(?:디|티|그|[Ilㅣ])\s+(?=[0-9A-Za-z])','',site);break
+  if price is None or not location or not date_hint:continue
+  row={'name':name,'location':location,'site':site,'price':price,'checkin':'','checkout':'','date_hint':date_hint,'needs_dates':True}
+  key=(name,date_hint,site)
+  if key not in seen:seen.add(key);result.append(row)
+ return result
+
 def parse_reservations(text):
  text=re.sub(r'\b(2[0-9])([01][0-9])\.(\d{1,2})',r'\1.\2.\3',text)
  lines=[re.sub(r'\s+',' ',line).strip() for line in text.splitlines() if line.strip()]
@@ -63,7 +97,7 @@ def parse_reservations(text):
   n,name=candidates[-1];name=re.sub(r'^[^\w가-힣]+','',name).strip();site=' · '.join(lines[n+1:i]);site=re.sub(r'^예약\s*정보\s*[:：]\s*','',site).strip()
   row={'name':name,'site':site,'checkin':start.isoformat(),'checkout':end.isoformat()}
   if identity(row) not in seen:seen.add(identity(row));result.append(row)
- return result
+ return result or parse_timeline(lines)
 
 def thumbnail_boxes(image):
  """Find dense photo blocks in the left column; exclude short badges/text lines."""
@@ -159,9 +193,9 @@ def image_text(file,with_records=False):
     outputs.append(text)
     rows=parse_reservations(text)
     dated_lines=sum(bool(re.search(r'\d[./]\s*\d{1,2}.*[~–—-].*\d[./]\s*\d{1,2}',line)) for line in text.splitlines())
-    if rows and len(rows)>=dated_lines:return output(text)
+    if rows and not any(row.get('needs_dates') for row in rows) and len(rows)>=dated_lines:return output(text)
    if outputs:
-    best=max(outputs,key=lambda text:len(parse_reservations(text)))
+    best=max(reversed(outputs),key=lambda text:len(parse_reservations(text)))
     if parse_reservations(best) or not timed_out:return output(best)
    if timed_out:raise ValueError('사진 인식 시간이 초과됐습니다. 예약 내용 부분만 잘라 다시 선택해주세요.')
    return output('')
@@ -173,7 +207,7 @@ def parse_reservation_text(text):
  text=unicodedata.normalize('NFKC',text).replace('\r','')[:10000]
  if re.search(r'예약\s*취소|취소\s*완료|취소되었',text):return []
  rows=parse_reservations(text)
- if rows and not re.search(r'(?:캠핑장명|캠핑장|업체명|숙소명)\s*[:：]',text):return rows
+ if rows and not any(row.get('needs_dates') for row in rows) and not re.search(r'(?:캠핑장명|캠핑장|업체명|숙소명)\s*[:：]',text):return rows
  pattern=r'(20\d{2})[./-](\d{1,2})[./-](\d{1,2})'
  dates=list(re.finditer(pattern,text));duration=re.search(r'(\d{1,3})\s*박',text)
  start_match=re.search(r'(?:입실(?:일)?|체크인|이용시작)\s*[:：]?\s*'+pattern,text)
