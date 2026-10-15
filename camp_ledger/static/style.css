@@ -74,3 +74,5 @@ body[data-camp-hub="1"] #settings,body[data-camp-hub="1"] #install,body[data-cam
 .ledger-brand-row{display:flex;align-items:center;justify-content:space-between;gap:10px}.ledger-brand-row>.brand{min-width:0}.brand-tools{position:fixed;right:32px;top:22px;z-index:40;display:flex;align-items:center;gap:8px}.brand-tools .excel-actions{margin:0;display:flex;flex-wrap:nowrap;gap:6px}.brand-tools .export{white-space:nowrap}body>main{padding-top:78px}@media(max-width:760px){body>main{padding-top:18px}.ledger-brand-row{gap:6px}.ledger-brand-row>.brand{padding:0;gap:8px;font-size:12px}.brand-tools{position:static;flex:none;gap:4px}.brand-tools .excel-actions{gap:4px}.brand-tools .export{font-size:10px;padding:7px 6px}.ledger-brand-row .brand-symbol{flex:none}.ledger-top{padding-bottom:12px}}
 
 .floating-add{max-width:calc(100vw - 36px)}.floating-add span:last-child{overflow-wrap:anywhere}
+
+@media(max-width:760px){.sidebar>nav{display:none}}

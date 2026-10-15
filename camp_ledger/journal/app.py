@@ -43,7 +43,7 @@ def upgrade_columns(settings):
 def get_settings(c):
  s=upgrade_columns(json.loads(c.execute('SELECT body FROM settings WHERE id=1').fetchone()[0]));s.setdefault('platforms',list(DEFAULT_PLATFORMS));s.setdefault('scroll_top','bottom-right');s['scroll_top']={'left-top':'top-left','right-top':'top-right','left-bottom':'bottom-left','right-bottom':'bottom-right','left-middle':'bottom-left','right-middle':'bottom-right'}.get(s['scroll_top'],s['scroll_top']);s.setdefault('add_position','bottom-right');s.setdefault('add_label','캠핑 기록 추가');s.setdefault('kakao_key','');s.setdefault('detail_order',list(DETAIL_FIELDS));s.setdefault('field_labels',{});s.setdefault('selection_enabled',True);s.setdefault('duplicate_enabled',True);s.setdefault('detail_duplicate_enabled',s['duplicate_enabled']);s.setdefault('click_actions',{'list':{'name':{'copy':False,'map':True},'location':{'copy':False,'map':True}},'detail':{'name':{'copy':True,'map':False},'location':{'copy':True,'map':False}}})
  for mode in ('desktop','display_mobile'):
-  s[mode].setdefault('link_size',20);s[mode].setdefault('order',list(s['order']) if mode=='desktop' else ['name','site','checkin','checkout','nights','location','price','notes','platform','booking_url','map_url','photos','layout']);s[mode].setdefault('visible',dict(s['visible']));s[mode].setdefault('photo_size',38);s[mode].setdefault('row_height',0);s[mode].setdefault('layout_caption',False)
+  s[mode].setdefault('link_size',20);s[mode].setdefault('order',list(s['order']) if mode=='desktop' else ['name','site','checkin','checkout','nights','location','price','notes','platform','booking_url','map_url','photos','layout']);s[mode].setdefault('visible',dict(s['visible']));s[mode].setdefault('photo_size',38);s[mode].setdefault('row_height',0);s[mode].setdefault('layout_caption',False);s[mode].setdefault('layout_size',56)
  s.setdefault('empty_text',{})
  return s
 mobile=install_mobile(app,connection,get_settings,DATA)
@@ -340,7 +340,9 @@ def settings():
   if type(row_height)!=int or (row_height!=0 and not 20<=row_height<=400):raise ValueError('행 높이는 자동(0) 또는 20~400px입니다.')
   layout_caption=x.get('layout_caption',False)
   if type(layout_caption)!=bool:raise ValueError('배치도 문구 표시 설정을 확인해주세요.')
-  display[key]={'layout_caption':layout_caption,'row_height':row_height,'font':font,'padding':padding,'widths':widths,'link_size':link_size,'order':mode_order,'visible':mode_visible,'photo_size':photo_size}
+  layout_size=x.get('layout_size',56)
+  if type(layout_size)!=int or not 20<=layout_size<=200:raise ValueError('배치도 사진 크기는 20~200px입니다.')
+  display[key]={'layout_size':layout_size,'layout_caption':layout_caption,'row_height':row_height,'font':font,'padding':padding,'widths':widths,'link_size':link_size,'order':mode_order,'visible':mode_visible,'photo_size':photo_size}
  if raw.get('picker') not in ('files','gallery'):raise ValueError('사진 선택 방식을 확인해주세요.')
  with connection() as c:
   c.execute('BEGIN IMMEDIATE');s=get_settings(c);platforms=raw.get('platforms',s['platforms'])

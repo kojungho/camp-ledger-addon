@@ -58,3 +58,13 @@ class ListPreferencesTest(unittest.TestCase):
   saved=client.get('/api/state').json['settings']['display'];self.assertEqual(saved['fieldLabels']['buyer'],'  ');self.assertEqual(saved['fieldLabels']['name'],'');self.assertEqual(saved['emptyText']['buyer'],'');self.assertFalse(saved['selectionEnabled']);self.assertEqual(saved['photoSize'],100)
   d['selectionEnabled']='false';self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,400)
   d['selectionEnabled']=False;d['emptyText']['photos']='x';self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,400)
+
+ def test_mobile_layout_size_saved_and_validated(self):
+  client=journal.test_client();s=client.get('/api/state').json['settings'];self.assertEqual(s['display_mobile']['layout_size'],56)
+  for size in (20,96,200):
+   s['display_mobile']['layout_size']=size
+   self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,200)
+   self.assertEqual(client.get('/api/state').json['settings']['display_mobile']['layout_size'],size)
+  for invalid in (19,201,True,'80'):
+   s['display_mobile']['layout_size']=invalid
+   self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,400)
