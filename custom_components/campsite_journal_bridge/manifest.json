@@ -1,0 +1,10 @@
+{
+  "domain": "campsite_journal_bridge",
+  "name": "캠핑장 기록 연결",
+  "version": "1.0.0",
+  "documentation": "https://github.com/kojungho/campsite-journal-addon",
+  "codeowners": [
+    "@kojungho"
+  ],
+  "requirements": []
+}
