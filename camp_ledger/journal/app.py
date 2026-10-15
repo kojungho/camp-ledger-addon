@@ -1,7 +1,8 @@
 """Persistent campsite journal, HA Ingress and isolated paired-device listener."""
 import io,json,os,shutil,sqlite3,uuid,zipfile
 from pathlib import Path
-from datetime import date
+from datetime import date,datetime
+from zoneinfo import ZoneInfo
 from contextlib import contextmanager
 from flask import Flask,request,jsonify,abort,send_file,Response,stream_with_context
 from PIL import Image,UnidentifiedImageError,ImageOps
@@ -85,6 +86,12 @@ def state():
 def checked_rating(value):
  if type(value) is not int or not 0<=value<=5:raise ValueError('평가는 0~5점으로 선택해주세요.')
  return value
+def rating_allowed(record,day=None):
+ day=day or datetime.now(ZoneInfo('Asia/Seoul')).date().isoformat()
+ start,end=record.get('checkin',''),record.get('checkout','')
+ return not (start and (day<start or (end and day<end)))
+def check_stay_rating(record,rating):
+ if rating and not rating_allowed(record):raise ValueError('이용전·이용중인 캠핑장은 이용 완료 후 평가할 수 있습니다.')
 def clean(raw):
  if not isinstance(raw,dict):raise ValueError('기록 형식이 올바르지 않습니다.')
  b={k:raw.get(k,'') for k in FIELDS if k not in ('photos','layout','nights','rating')}
@@ -113,6 +120,7 @@ def clean(raw):
    if not -(90 if k=='lat' else 180)<=v<=(90 if k=='lat' else 180):raise ValueError('좌표 범위를 확인해주세요.')
    b[k]=v
  if (b['lat'] is None)!=(b['lng'] is None):raise ValueError('위도와 경도를 함께 입력해주세요.')
+ if 'rating' in b:check_stay_rating(b,b['rating'])
  return b
 @app.get('/api/live/status')
 def live_status():
@@ -307,7 +315,7 @@ def set_rating(ident):
   c.execute('BEGIN IMMEDIATE')
   row=c.execute('SELECT body FROM records WHERE id=?',(ident,)).fetchone()
   if not row:abort(404)
-  body=json.loads(row['body']);body['rating']=rating
+  body=json.loads(row['body']);check_stay_rating(body,rating);body['rating']=rating
   c.execute('UPDATE records SET body=? WHERE id=?',(json.dumps(body,ensure_ascii=False),ident))
  return jsonify(ok=True,rating=rating)
 @app.put('/api/records/<ident>/cover')

@@ -211,4 +211,27 @@ class JournalTest(unittest.TestCase):
   self.record();r=self.client.get('/api/backup');self.assertEqual(r.status_code,200)
   with zipfile.ZipFile(io.BytesIO(r.data)) as z:
    data=json.loads(z.read('journal.json'));self.assertEqual(len(data['records']),1);self.assertNotIn('mobile',data['settings']);self.assertNotIn('devices',data)
+
+ def test_stay_rating_blocks_pending_and_active_and_allows_checkout_day(self):
+  from journal.app import rating_allowed
+  record={'checkin':'2026-10-16','checkout':'2026-10-18'}
+  for day,allowed in [('2026-10-15',False),('2026-10-16',False),('2026-10-17',False),('2026-10-18',True),('2026-10-19',True)]:
+   with self.subTest(day=day):self.assertEqual(bool(rating_allowed(record,day)),allowed)
+  self.assertTrue(rating_allowed({},'2026-10-15'))
+  self.assertFalse(rating_allowed({'checkin':'2027-01-01','checkout':'2027-01-02'},'2026-12-31'))
+  self.assertTrue(rating_allowed({'checkin':'2026-10-01'},'2026-10-15'))
+ def test_locked_rating_api_and_generic_saves_cannot_add_rating(self):
+  ident=self.record();before=self.client.get('/api/state').json['records'][0]
+  with patch('journal.app.rating_allowed',return_value=False):
+   response=self.client.put('/api/records/'+ident+'/rating',json={'rating':4},headers=self.headers)
+   self.assertEqual(response.status_code,400);self.assertIn('이용 완료',response.json['error'])
+   self.assertEqual(self.client.get('/api/state').json['records'][0],before)
+   self.assertEqual(self.client.post('/api/records',json={'name':'우회 시도','rating':3},headers=self.headers).status_code,400)
+   self.assertEqual(self.client.put('/api/records/'+ident,json={'name':'우회 수정','rating':3},headers=self.headers).status_code,400)
+   self.assertEqual(self.client.post('/api/records/save',data={'record':json.dumps({'id':ident,'fields':{'name':'사진 포함 우회','rating':3}})},headers=self.headers).status_code,400)
+  self.assertEqual(self.client.put('/api/records/'+ident+'/rating',json={'rating':4},headers=self.headers).status_code,200)
+  with patch('journal.app.rating_allowed',return_value=False):
+   self.assertEqual(self.client.put('/api/records/'+ident+'/rating',json={'rating':0},headers=self.headers).status_code,200)
+   self.assertEqual(self.client.get('/api/state').json['records'][0]['rating'],0)
+
 if __name__=='__main__':unittest.main()
