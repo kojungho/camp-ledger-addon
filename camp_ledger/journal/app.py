@@ -333,12 +333,12 @@ def remove_photo(pid):
  return jsonify(ok=True)
 @app.post('/api/import/preview')
 def import_preview():
- from .reservation_import import image_text,parse_reservations,identity
+ from .reservation_import import image_text,review_records,identity
  file=request.files.get('image')
  result=image_text(file,with_records=True) if file else None
  text=result['text'] if result is not None else str((request.get_json(silent=True) or {}).get('text',''))[:50000]
  with connection() as c:existing={identity(json.loads(row['body'])) for row in c.execute('SELECT body FROM records')}
- rows=result['records'] if result is not None else parse_reservations(text)
+ rows=result['records'] if result is not None else review_records(text)
  return jsonify(text=text,records=[{**row,'duplicate':bool(row.get('checkin') and row.get('checkout') and identity(row) in existing)} for row in rows])
 @app.post('/api/import/text-preview')
 def import_text_preview():

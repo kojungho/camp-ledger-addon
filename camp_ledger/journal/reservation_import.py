@@ -6,9 +6,61 @@ from PIL import Image,ImageOps,UnidentifiedImageError
 def identity(record):
  return (re.sub(r'[\W_]+','',unicodedata.normalize('NFKC',str(record.get('name','')))).casefold(),record.get('checkin',''),record.get('checkout',''))
 
+def current_year():
+ from datetime import datetime
+ from zoneinfo import ZoneInfo
+ return datetime.now(ZoneInfo('Asia/Seoul')).year
+
+def partial_fields(text):
+ """Best-effort review fields; unsupported text is still returned separately as OCR text."""
+ from datetime import date,timedelta
+ lines=[line.strip() for line in text.splitlines() if line.strip()]
+ row={'name':'','site':'','checkin':'','checkout':'','needs_review':True}
+ named=re.search(r'(?:캠핑장명|업체명|숙소명|캠핑장)\s*[:：]\s*([^\n]+)',text)
+ if named:row['name']=named.group(1).strip()
+ else:
+  candidates=[line for line in lines if re.search('캠핑장|캠프|야영장|글램핑|카라반|휴양림|목장',line) and not re.search('예약번호|사이트|입실|퇴실|취소|이용약관|중개|업종|캠핑[,，·ㆍ]야영장',line)]
+  if candidates:row['name']=candidates[0]
+ for key,pattern in [('location',r'(?:주소|위치|소재지)\s*[:：]\s*([^\n]+)'),('site',r'(?:사이트명|사이트|구역|자리)\s*[:：]\s*([^\n]+)')]:
+  match=re.search(pattern,text)
+  if match:row[key]=match.group(1).strip()
+ amount=re.search(r'([\d,]+)\s*원',text)
+ if amount:row['price']=int(amount.group(1).replace(',',''))
+ full=re.compile(r'(?<!\d)(\d{4}|\d{2})\s*[./-]\s*(\d{1,2})\s*[./-]\s*(\d{1,2})(?!\d)')
+ month_day=re.compile(r'(?<![\d./-])(\d{1,2})\s*[./월]\s*(\d{1,2})(?:일)?(?![\d./-])')
+ dates=[];assumed=False
+ for line in lines:
+  if re.search('결제|예약번호',line):continue
+  matches=list(full.finditer(line));is_full=bool(matches)
+  if not matches:matches=list(month_day.finditer(line))
+  for match in matches:
+   values=list(map(int,match.groups()))
+   if not is_full:values=[current_year(),*values]
+   elif values[0]<100:values[0]+=2000
+   try:value=date(*values)
+   except ValueError:continue
+   dates.append((value,line));assumed|=not is_full
+ if dates:
+  row['checkin']=dates[0][0].isoformat()
+  if assumed:row['year_assumed']=True;row['date_hint']=row['checkin'][5:].replace('-','.')
+  end=next((d for d,line in dates if re.search('퇴실|체크아웃|이용종료',line)),None)
+  if end is None and len(dates)>1 and re.search(r'[~–—]|\d\s*-\s*\d',text):end=dates[1][0]
+  duration=re.search(r'(\d{1,3})\s*박',text)
+  if end is None and duration and 1<=int(duration.group(1))<=366:end=dates[0][0]+timedelta(days=int(duration.group(1)))
+  if end is not None and end>=dates[0][0]:row['checkout']=end.isoformat()
+ row['needs_dates']=not bool(row['checkin'] and row['checkout'])
+ return [row] if row['name'] or row.get('site') or row.get('location') or 'price' in row or row['checkin'] else []
+
+def review_records(text):
+ rows=parse_reservations(text);partial=partial_fields(text)
+ if len(rows)==1 and partial:
+  for key in ('location','price'):
+   if key in partial[0] and not rows[0].get(key):rows[0][key]=partial[0][key]
+ return rows or partial
+
 def parse_timeline(lines):
  """Extract incomplete visit entries without inventing a year or checkout date."""
- result=[];seen=set();date_hint=''
+ result=[];seen=set();date_hint='';visit_day=None
  category=re.compile(r'캠핑\s*[,，.·ㆍ]?\s*야영장')
  for i,line in enumerate(lines):
   month_day=re.fullmatch(r'(\d{1,2})\s*[./]\s*(\d{1,2})\s*([월화수목금토일])?',line)
@@ -18,6 +70,7 @@ def parse_timeline(lines):
     from datetime import date
     date(2000,month,day)
    except ValueError:continue
+   visit_day=(month,day)
    date_hint=f'{month}.{day}'+(' '+month_day.group(3) if month_day.group(3) else '')
   match=category.search(line)
   if not match or i==0:continue
@@ -35,7 +88,9 @@ def parse_timeline(lines):
     price=int(amount.group(1).replace(',',''));site=following[:amount.start()].strip(' ·ㆍ.,:：')
     site=re.sub(r'^(?:디|티|그|[Ilㅣ])\s+(?=[0-9A-Za-z])','',site);break
   if price is None or not location or not date_hint:continue
-  row={'name':name,'location':location,'site':site,'price':price,'checkin':'','checkout':'','date_hint':date_hint,'needs_dates':True}
+  try:checkin=date(current_year(),*visit_day).isoformat()
+  except ValueError:checkin=''
+  row={'name':name,'location':location,'site':site,'price':price,'checkin':checkin,'checkout':'','date_hint':date_hint,'needs_dates':True,'year_assumed':True}
   key=(name,date_hint,site)
   if key not in seen:seen.add(key);result.append(row)
  return result
@@ -164,7 +219,7 @@ def image_text(file,with_records=False):
     if result.returncode:raise ValueError('사진에서 글자를 읽지 못했습니다. 다른 사진이나 직접 입력을 사용해주세요.')
     return result.stdout[:50000]
    def output(text,rows=None):
-    return {'text':text,'records':rows if rows is not None else parse_reservations(text)} if with_records else text
+    return {'text':text,'records':rows if rows is not None else review_records(text)} if with_records else text
    boxes=thumbnail_boxes(image)
    if boxes:
     parts=[];rows=[]
@@ -178,7 +233,7 @@ def image_text(file,with_records=False):
      picture=Image.new('RGB',(max(title.width,below.width),title.height+below.height+15),'white');picture.paste(title,(0,0));picture.paste(below,(0,title.height+15))
      try:text=recognize(picture,'card-'+str(index),limit=12)
      except subprocess.TimeoutExpired:timed_out=True;continue
-     parts.append(text);found=parse_reservations(text)
+     parts.append(text);found=review_records(text)
      # Only attach a crop when this bounded card contains exactly one reservation.
      if len(found)==1:found[0]['thumbnail']=thumbnail_data(image,box)
      rows.extend(found)
@@ -196,7 +251,7 @@ def image_text(file,with_records=False):
     if rows and not any(row.get('needs_dates') for row in rows) and len(rows)>=dated_lines:return output(text)
    if outputs:
     best=max(reversed(outputs),key=lambda text:len(parse_reservations(text)))
-    if parse_reservations(best) or not timed_out:return output(best)
+    if best.strip() or not timed_out:return output(best)
    if timed_out:raise ValueError('사진 인식 시간이 초과됐습니다. 예약 내용 부분만 잘라 다시 선택해주세요.')
    return output('')
  finally:OCR_SLOT.release()
