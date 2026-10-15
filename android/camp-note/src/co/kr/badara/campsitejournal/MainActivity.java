@@ -66,12 +66,12 @@ public class MainActivity extends Activity {
         @JavascriptInterface public String readReservationClipboard(){
             try{ClipboardManager clipboard=(ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE);if(clipboard==null||!clipboard.hasPrimaryClip())return "";ClipData clip=clipboard.getPrimaryClip();if(clip==null||clip.getItemCount()==0)return "";CharSequence value=clip.getItemAt(0).getText();if(value==null)return "";String text=value.toString();return text.length()>10000?text.substring(0,10000):text;}catch(Exception unavailable){return "";}
         }
-        @JavascriptInterface public int getPlatformSyncVersion(){return 2;}
+        @JavascriptInterface public int getPlatformSyncVersion(){return 3;}
         @JavascriptInterface public void openPlatform(String provider){openPlatformIncremental(provider,"{}");}
         @JavascriptInterface public void openPlatformIncremental(String provider,String history){
             if(!"camfit".equals(provider)&&!"thankq".equals(provider)&&!"campingtalk".equals(provider))return;
             final String known=history!=null&&history.length()<=150000?history:"{}";
-            runOnUiThread(()->{if(platformConnecting)return;platformConnecting=true;startActivityForResult(new Intent(MainActivity.this,PlatformActivity.class).putExtra("provider",provider).putExtra("history",known),901);});
+            runOnUiThread(()->{if(platformConnecting)return;platformConnecting=true;try{startActivityForResult(new Intent(MainActivity.this,PlatformActivity.class).putExtra("provider",provider).putExtra("history",known),901);}catch(RuntimeException error){platformConnecting=false;android.util.Log.e("CampNotePlatform","Platform launch failed",error);Toast.makeText(MainActivity.this,"플랫폼 화면을 열지 못했습니다. 앱 업데이트를 확인해주세요.",Toast.LENGTH_LONG).show();}});
         }
         @JavascriptInterface public String getVersion() {return appVersion();}
         @JavascriptInterface public boolean isMapAppInstalled(String kind){
