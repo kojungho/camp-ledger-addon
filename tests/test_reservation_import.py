@@ -117,3 +117,10 @@ EF) 3사이트캠핑장.ㆍ175,000원
  def test_complete_cards_are_enriched_from_their_own_block(self):
   rows=review_records('별 캠핑장\n사이트 A-1\n일정 26.05.23-26.05.25\n주소: 경기 가평군\n금액: 120,000원\n달 캠핑장\n사이트 B-2\n일정 26.06.02-26.06.03\n주소: 강원 홍천군\n금액: 80,000원')
   self.assertEqual(len(rows),2);self.assertEqual(rows[0]['price'],120000);self.assertEqual(rows[1]['price'],80000);self.assertEqual(rows[1]['location'],'강원 홍천군')
+
+ def test_korean_address_discards_isolated_latin_noise_but_keeps_building_labels(self):
+  row=review_records('5.3 일\n하늘구니 더원\n캠핑,야영장ㆍ대구 군위군 ABO AH\n3사이트 캠핑장ㆍ175,000원')[0]
+  self.assertEqual(row['location'],'대구 군위군');self.assertIn('주소',row['review_warnings'][0])
+  from journal.reservation_import import clean_location
+  self.assertEqual(clean_location('경기 가평군 가평읍 캠핑로 123 A동 ABC빌딩'),'경기 가평군 가평읍 캠핑로 123 A동 ABC빌딩')
+  self.assertEqual(clean_location('123 Camping Road CA'),'123 Camping Road CA')

@@ -67,6 +67,13 @@ def clean_site(value):
  value=re.sub(r'^\s*(?:[A-Za-z]{1,3}[)\]]|[디티트그Ilㅣ])\s+(?=[0-9A-Za-z])','',value)
  return value.strip(' ·ㆍ.,:：;')
 
+def clean_location(value):
+ # In a Korean administrative address, isolated Latin OCR words are not road or
+ # lot numbers. Keep mixed building labels (A동/ABC빌딩), digits and foreign addresses.
+ if not re.search(r'[가-힣]+(?:도|시|군|구|읍|면|동|리|로|길)\b',value):return value
+ value=re.sub(r'(?<![A-Za-z가-힣0-9])[A-Za-z]{2,}(?![A-Za-z가-힣0-9])','',value)
+ return re.sub(r'\s+',' ',value).strip(' ·ㆍ.,:：;')
+
 UI_TEXT=re.compile(r'다시\s*예약(?:하기)?|예약\s*(?:내역|상세)|리뷰\s*쓰기|후기\s*작성|로그\s*작성완료|지도\s*보기|재예약|이용완료|방문완료')
 CATEGORY=re.compile(r'캠핑\s*[,，.·ㆍ]?\s*야영장')
 DAY_HEADER=re.compile(r'(\d{1,2})\s*[./월]\s*(\d{1,2})(?:일)?\s*\(?([월화수목금토일])?\)?')
@@ -101,7 +108,10 @@ def _review_block(text):
    for key in ('location','price','platform','booking_url','map_url','notes'):
     if key in partial[0] and not row.get(key):row[key]=partial[0][key]
   row['name']=clean_name(row.get('name',''));row['site']=clean_site(row.get('site',''))
-  if re.match(r'^0\d\b',row['site']):row['review_warnings']=['사이트 번호의 숫자·영문을 확인하세요.']
+  if re.match(r'^0\d\b',row['site']):row.setdefault('review_warnings',[]).append('사이트 번호의 숫자·영문을 확인하세요.')
+  location=row.get('location','');row_location=clean_location(location)
+  if row_location!=location:
+   row['location']=row_location;row.setdefault('review_warnings',[]).append('주소 일부를 정확하게 읽지 못했습니다. 주소를 확인하세요.')
  return rows
 
 def review_records(text):
