@@ -93,3 +93,6 @@ Android 1.0.7은 시스템 다크·라이트 모드에 맞춰 상태바·내비�
 
 ## 1.1.18
 기록 settings.floating, 장부 settings.display.floating은 pc/mobile 각각 addScale, addFont, topScale, topFont를 저장합니다. 비율은 50~200%, 글자·아이콘은 8~64px입니다. 기본 비율은 100%이며 화면별 설정 탭에서 수정합니다. CSS로 크기를 적용해 여섯 위치 기준점을 유지합니다. 사진이 없는 장부 상품명은 숨겨진 사진 공간을 유지합니다.
+
+## 1.1.19
+허브 상단 header가 hidden일 때 자동 그리드 배치가 main을 높이 0인 첫 행에 놓던 문제를 수정했습니다. header와 main을 각각 1/2행에 명시 배치해 연결 화면도 두 번째 가변 높이 행을 사용합니다. Android APK 수정 없이 두 허브의 서버 CSS에 반영합니다.
