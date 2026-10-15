@@ -3,6 +3,9 @@ package co.kr.badara.campsitejournal;
 import android.app.Activity;
 import android.app.DownloadManager;
 import android.content.Context;
+import android.content.res.Configuration;
+import android.graphics.drawable.ColorDrawable;
+import android.view.WindowInsetsController;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
@@ -67,6 +70,7 @@ public class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        applySystemBars();
         prefs=getSharedPreferences("campsite-journal",MODE_PRIVATE);
         try {key=readKey();} catch(Exception e) {key=null;}
         File photos=new File(getCacheDir(),"photos");File[] old=photos.listFiles();if(old!=null)for(File f:old)if(f.isFile()&&System.currentTimeMillis()-f.lastModified()>7L*24*60*60*1000)f.delete();
@@ -79,6 +83,18 @@ public class MainActivity extends Activity {
         super.onNewIntent(intent);setIntent(intent);String previousKey=key;handleIntent(intent);
         if(key!=null&&(web==null||!key.equals(previousKey)))showLedger();
     }
+    private void applySystemBars(){
+        boolean dark=(getResources().getConfiguration().uiMode&Configuration.UI_MODE_NIGHT_MASK)==Configuration.UI_MODE_NIGHT_YES;
+        int background=dark?Color.rgb(23,37,31):Color.rgb(250,251,247);
+        getWindow().setBackgroundDrawable(new ColorDrawable(background));
+        View decor=getWindow().getDecorView();decor.setBackgroundColor(background);
+        getWindow().setStatusBarColor(background);getWindow().setNavigationBarColor(background);
+        if(Build.VERSION.SDK_INT>=29){getWindow().setStatusBarContrastEnforced(false);getWindow().setNavigationBarContrastEnforced(false);}
+        if(Build.VERSION.SDK_INT>=30){WindowInsetsController controller=getWindow().getInsetsController();if(controller!=null){int mask=WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS|WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;controller.setSystemBarsAppearance(dark?0:mask,mask);}}
+        else{int flags=decor.getSystemUiVisibility(),mask=View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;decor.setSystemUiVisibility(dark?flags&~mask:flags|mask);}
+    }
+    @Override public void onConfigurationChanged(Configuration configuration){super.onConfigurationChanged(configuration);applySystemBars();}
+    @Override public void onWindowFocusChanged(boolean focused){super.onWindowFocusChanged(focused);if(focused)applySystemBars();}
     private boolean openMappingUri(Uri uri){
         String fallback=null;Uri destination=uri;
         try{if("intent".equals(uri.getScheme())){Intent parsed=Intent.parseUri(uri.toString(),Intent.URI_INTENT_SCHEME);destination=parsed.getData();fallback=parsed.getStringExtra("browser_fallback_url");}}catch(Exception error){return false;}
@@ -194,7 +210,7 @@ public class MainActivity extends Activity {
     @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request!=10||chooser==null)return;ValueCallback<Uri[]> pending=chooser;chooser=null;Uri[] uris=selectedUris(result,data);if(uris==null||!chooserPhotos){pending.onReceiveValue(uris);return;}
         new Thread(()->{ArrayList<Uri> copied=new ArrayList<>();for(Uri uri:uris)try{copied.add(cachePhoto(uri));}catch(Exception ignored){}runOnUiThread(()->{if(copied.isEmpty()){pending.onReceiveValue(null);Toast.makeText(this,"선택한 사진을 읽지 못했습니다. 파일 앱으로 다시 선택해주세요.",Toast.LENGTH_LONG).show();}else pending.onReceiveValue(copied.toArray(new Uri[0]));});},"campsite-journal-photos").start();
     }
-    @Override protected void onResume(){super.onResume();if(updater!=null){updater.resumed();}}
+    @Override protected void onResume(){super.onResume();applySystemBars();if(updater!=null){updater.resumed();}}
     @Override public void onBackPressed(){if(web!=null&&web.canGoBack())web.goBack();else super.onBackPressed();}
     @Override protected void onDestroy(){if(web!=null)web.destroy();super.onDestroy();}
 }
