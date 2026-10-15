@@ -1,0 +1,60 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+// A small DOM fixture exercises the same widget scripts against two independent
+// review scopes and the ordinary form, including nested modal callbacks.
+const decode=s=>s.replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&');
+class E{
+ constructor(tag='div'){this.tagName=tag.toUpperCase();this.children=[];this.attrs={};this.listeners={};this._value='';this.disabled=false;this.hidden=false;this.open=false;this.classList={add:(...v)=>this.className=[this.className||'',...v].join(' ')}};
+ setAttribute(k,v){this.attrs[k]=String(v);if(k==='id')this.id=v;if(k==='class')this.className=v;if(k==='value')this._value=decode(v);if(k==='selected')this.selected=true;}
+ removeAttribute(k){delete this.attrs[k]}
+ get dataset(){return Object.fromEntries(Object.entries(this.attrs).filter(([k])=>k.startsWith('data-')).map(([k,v])=>[k.slice(5).replace(/-([a-z])/g,(_,c)=>c.toUpperCase()),v]))}
+ get options(){return this.children.filter(c=>c.tagName==='OPTION')}
+ get value(){if(this.tagName==='SELECT')return this._value||this.options.find(o=>o.selected)?.value||this.options[0]?.value||'';return this._value}
+ set value(v){v=String(v??'');this._value=this.tagName==='SELECT'&&!this.options.some(o=>o.value===v)?'':v;if(this.tagName==='SELECT')for(const option of this.options)option.selected=option.value===this._value;}
+ get isConnected(){return this===document.body||this===document.head||!!this.parentNode?.isConnected}
+ get elements(){return Object.fromEntries(this.querySelectorAll('[name]').map(e=>[e.attrs.name,e]))}
+ matches(s){if(s.startsWith('#'))return this.id===s.slice(1);if(s.startsWith('.'))return (this.className||'').split(' ').includes(s.slice(1));const m=s.match(/^\[([^=\]]+)(?:=["']?([^"'\]]+)["']?)?\]$/);return m?m[1] in this.attrs&&(m[2]===undefined||this.attrs[m[1]]===m[2]):this.tagName===s.toUpperCase()}
+ querySelectorAll(s){return this.children.flatMap(c=>[...(c.matches(s)?[c]:[]),...c.querySelectorAll(s)])}
+ querySelector(s){return this.querySelectorAll(s)[0]||null}
+ closest(s){return this.matches(s)?this:this.parentNode?.closest(s)}
+ remove(){if(this.parentNode){this.parentNode.children=this.parentNode.children.filter(c=>c!==this);this.parentNode=null}}
+ append(...nodes){for(const node of nodes){node.remove();node.parentNode=this;this.children.push(node);if(this===document.head&&node.tagName==='SCRIPT')queueMicrotask(()=>node.onload?.())}}
+ before(node){const parent=this.parentNode;node.remove();node.parentNode=parent;parent.children.splice(parent.children.indexOf(this),0,node)}
+ replaceChildren(...nodes){for(const child of [...this.children])child.remove();this.append(...nodes);this._text=''}
+ set textContent(v){this.replaceChildren();this._text=String(v)}get textContent(){return this._text||this.children.map(c=>c.textContent).join('')}
+ set innerHTML(html){this.replaceChildren();const stack=[this];for(const token of html.match(/<[^>]+>|[^<]+/g)||[]){if(token.startsWith('</')){stack.pop();continue}if(token.startsWith('<')){const m=token.match(/^<([a-z0-9-]+)/i);if(!m)continue;const node=new E(m[1]);for(const a of token.matchAll(/([\w-]+)(?:="([^"]*)")?/g)){if(a.index===1)continue;node.setAttribute(a[1],a[2]??'')}stack.at(-1).append(node);if(!['INPUT','IMG','BR','HR'].includes(node.tagName))stack.push(node)}else stack.at(-1)._text=(stack.at(-1)._text||'')+decode(token)}}
+ addEventListener(type,fn){(this.listeners[type]??=[]).push(fn)}
+ dispatchEvent(event){this['on'+event.type]?.(event);for(const fn of this.listeners[event.type]||[])fn(event);return true}
+ showModal(){this.open=true}close(){this.open=false;this.dispatchEvent({type:'close'})}focus(){}click(){return this.onclick?.({preventDefault(){}})}reportValidity(){return true}
+}
+const document={body:new E('body'),head:new E('head'),createElement:tag=>new E(tag),querySelector:s=>document.body.querySelector(s)};
+const add=(tag,id,parent=document.body)=>{const el=new E(tag);el.id=id;parent.append(el);return el};
+const form=add('form','recordForm'),manual=add('div','manualRecordFields',form),submit=add('button','recordSubmit',form);submit.textContent='추가';
+add('p','geoStatus');add('button','geocode');add('button','pickMapPosition');const addressDialog=add('dialog','addressSearch');add('p','addressStatus',addressDialog);add('div','postcodeWidget',addressDialog);
+const keys=['name','site','checkin','checkout','location','price','platform','booking_url','map_url','notes'];
+const source={id:'newest',name:'별 캠핑장',location:'경기 가평군 캠핑로 1',platform:'캠핏',booking_url:'https://new.test',photos:[{id:'cover',kind:'gallery',is_cover:1},{id:'layout',kind:'layout'}]};
+const state={settings:{platforms:['홈페이지','캠핏','네이버'],kakao_key:'a'.repeat(32)},records:[source,{...source,id:'older',booking_url:'https://old.test'}]};
+let postcodeComplete;const point={lat:37.5,lng:128.2};class LatLng{constructor(lat,lng){this.lat=lat;this.lng=lng}getLat(){return this.lat}getLng(){return this.lng}}
+const maps={LatLng,Map:class{relayout(){}setCenter(){}setLevel(){}},Marker:class{setMap(){}},event:{addListener(){}},load:cb=>cb(),services:{Status:{OK:'OK',ZERO_RESULT:'ZERO'},Places:class{keywordSearch(q,cb){cb([{place_name:source.name,road_address_name:source.location,y:String(point.lat),x:String(point.lng),place_url:'https://place.test'}],'OK')}},Geocoder:class{addressSearch(q,cb){cb([{address_name:q,y:String(point.lat),x:String(point.lng)}],'OK')}}}};
+const window={kakao:{maps},daum:{Postcode:class{constructor(options){postcodeComplete=options.oncomplete}embed(){}}},mediaEditorSection:()=>'',inheritLayoutDraft(){}};
+const c={document,window,state,kakao:window.kakao,Date,Intl,URL,WeakMap,WeakSet,Event:class{constructor(type){this.type=type}},setTimeout,clearTimeout,labels:Object.fromEntries(keys.map(k=>[k,k])),editorKeys:()=>keys,esc:s=>String(s??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;'),link:()=>'<svg></svg>',run:fn=>fn,toast(){},fetch(){throw Error('Unexpected remote fetch')},api(){throw Error('Unexpected save')}};
+vm.createContext(c);const app=fs.readFileSync('camp_ledger/journal/static/app.js','utf8');vm.runInContext(app.slice(app.indexOf('function platformOptions'),app.indexOf('function edit(')),c);vm.runInContext(app.slice(app.indexOf('function setupInputLinks'),app.indexOf("$('#zoomPrev')",app.indexOf('function setupInputLinks'))),c);window.setupRecordInputLinks=c.setupInputLinks;
+manual.innerHTML=keys.map(k=>window.recordEditorField(k,{name:'기존 입력'})).join('')+'<input name="lat" value=""><input name="lng" value="">';
+for(const name of ['stay-picker','kakao-maps','campsite-finder','free-address','record-inheritance','reservation-editor'])vm.runInContext(fs.readFileSync('camp_ledger/journal/static/'+name+'.js','utf8'),c);
+assert.ok(window.recordEditorField('platform',{platform:'삭제된 플랫폼'},true).includes('삭제된 플랫폼'));assert.ok(window.recordEditorField('platform',{},true).includes('<select'));assert.ok(!window.recordEditorField('name',{},true).includes('name="name"'),'Review fields must not enter the primary form collection');
+const make=row=>{const card=add('section','');card.innerHTML=keys.map(k=>window.recordEditorField(k,row,true)).join('')+'<input data-review-field="lat" type="hidden" value=""><input data-review-field="lng" type="hidden" value=""><button type="button" data-review-address></button><button type="button" data-review-position></button><p data-review-geo></p><div data-review-inherited></div>';const read=()=>Object.fromEntries(card.querySelectorAll('[data-review-field]').map(i=>[i.dataset.reviewField,i.value]));return {card,row,target:window.setupReservationEditor({card,row,read}),read}};
+const first=make({name:'별',checkin:'2026-05-23',checkout:'',platform:'캠핏'}),second=make({name:'다른 예약',checkin:'2026-06-01'});
+const day=n=>document.querySelector('#stayDays').children.find(el=>el.textContent===String(n));const flush=()=>new Promise(resolve=>setImmediate(resolve));
+(async()=>{
+first.target.elements.checkin.click();day(23).click();day(25).click();assert.equal(first.read().checkout,'2026-05-25');assert.equal(second.read().checkin,'2026-06-01');assert.equal(form.elements.checkin.value,'');
+second.target.elements.checkout.click();day(1).click();day(3).click();assert.equal(second.read().checkout,'2026-06-03');assert.equal(first.read().checkout,'2026-05-25');
+first.card.querySelector('.find-campsite-button').click();await flush();document.querySelector('#campsiteFindResults').children[0].click();assert.equal(first.read().name,source.name);assert.equal(first.read().location,source.location);assert.equal(first.read().lat,String(point.lat));assert.equal(first.read().booking_url,'https://new.test');assert.equal(first.row.inherit_from,'newest');assert.equal(first.card.querySelector('[data-review-inherited]').children.length,2);assert.equal(second.read().name,'다른 예약');assert.equal(form.elements.name.value,'기존 입력');
+first.target.elements.platform.value='네이버';first.target.elements.platform.dispatchEvent(new c.Event('change'));assert.equal(first.row.inherit_from,null);assert.equal(first.read().booking_url,'');first.target.elements.platform.value='캠핏';first.target.elements.platform.dispatchEvent(new c.Event('change'));assert.equal(first.row.inherit_from,'newest');
+await second.card.querySelector('[data-review-address]').click();postcodeComplete({roadAddress:'강원 홍천군 캠핑로 2'});await flush();assert.equal(second.read().location,'강원 홍천군 캠핑로 2');assert.equal(first.read().location,source.location);assert.equal(form.elements.location.value,'');assert.equal(second.read().lng,String(point.lng));
+await first.card.querySelector('[data-review-position]').click();document.querySelector('#confirmKakaoPosition').click();assert.equal(first.read().lng,String(point.lng));await second.card.querySelector('[data-review-position]').click();document.querySelector('#confirmKakaoPosition').click();assert.ok(second.read().map_url.startsWith('https://map.kakao.com/link/map/'));assert.equal(document.querySelector('#geoStatus').textContent,'');
+await first.card.querySelector('[data-review-address]').click();postcodeComplete({roadAddress:'경기 양평군 다른길 3'});await flush();assert.equal(first.row.inherit_from,null,'Address changes invalidate inherited references');
+// Closing a search/address modal invalidates callbacks from the previous scope.
+const actualSearch=window.campsiteSearch;let finishSearch;window.campsiteSearch=()=>new Promise(resolve=>finishSearch=resolve);first.card.querySelector('.find-campsite-button').click();await flush();document.querySelector('#campsiteFinder').close();window.campsiteSearch=actualSearch;second.card.querySelector('.find-campsite-button').click();await flush();const currentResults=document.querySelector('#campsiteFindResults').children.length;finishSearch({results:[],total:0});await flush();assert.equal(document.querySelector('#campsiteFindResults').children.length,currentResults);document.querySelector('#campsiteFinder').close();
+await first.card.querySelector('[data-review-address]').click();const oldPostcode=postcodeComplete;addressDialog.close();await second.card.querySelector('[data-review-address]').click();oldPostcode({roadAddress:'잘못된 이전 응답'});assert.notEqual(first.read().location,'잘못된 이전 응답');assert.notEqual(second.read().location,'잘못된 이전 응답');addressDialog.close();
+let saves=0;window.setReservationReviewMode(()=>saves++,2);assert.equal(manual.hidden,true);assert.ok(Object.values(form.elements).every(i=>i.disabled));assert.equal(submit.textContent,'선택한 2건 등록');window.submitReservationReview();assert.equal(saves,1);window.setReservationReviewMode(()=>{},0);assert.equal(submit.disabled,true);window.setReservationReviewMode(null);assert.equal(manual.hidden,false);assert.equal(submit.textContent,'추가');assert.equal(submit.disabled,false);
+console.log('Shared renderer, period calendar, search/address/map scopes, platform choices, inherited media and primary/batch actions stay isolated across reservations.');
+})().catch(error=>{console.error(error);process.exitCode=1});

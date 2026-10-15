@@ -124,3 +124,26 @@ EF) 3사이트캠핑장.ㆍ175,000원
   from journal.reservation_import import clean_location
   self.assertEqual(clean_location('경기 가평군 가평읍 캠핑로 123 A동 ABC빌딩'),'경기 가평군 가평읍 캠핑로 123 A동 ABC빌딩')
   self.assertEqual(clean_location('123 Camping Road CA'),'123 Camping Road CA')
+
+ def test_batch_inherits_only_matching_source_media_and_keeps_thumbnail_cover(self):
+  source={'name':'같은 캠핑장','location':'경기 가평군','platform':'캠핏','booking_url':'https://camp.test','checkin':'2026-01-01','checkout':'2026-01-02'}
+  sid=self.client.post('/api/records',json=source,headers=self.headers).json['id']
+  for kind in ('gallery','layout'):
+   photo=io.BytesIO();Image.new('RGB',(20,20),'green').save(photo,'PNG');photo.seek(0)
+   self.client.post('/api/records/'+sid+'/photos/'+kind,data={'photos':(photo,kind+'.png')},headers=self.headers)
+  original=self.client.get('/api/state').json['records'][0];original_files=set(MEDIA.iterdir())
+  row={**source,'checkin':'2026-02-01','checkout':'2026-02-02','inherit_from':sid}
+  result=self.client.post('/api/import/commit',json={'records':[row]},headers=self.headers);self.assertEqual(result.status_code,200)
+  copied=self.client.get('/api/state').json['records'][0];self.assertEqual({p['kind'] for p in copied['photos']},{'layout','gallery'})
+  self.assertEqual(sum(p['is_cover'] for p in copied['photos']),1);self.assertFalse({p['id'] for p in copied['photos']}&{p['id'] for p in original['photos']})
+  row.update(checkin='2026-03-01',checkout='2026-03-02',thumbnail=thumbnail_data(Image.new('RGB',(20,20),'blue'),(0,0,20,20)))
+  self.assertEqual(self.client.post('/api/import/commit',json={'records':[row]},headers=self.headers).status_code,200)
+  record=self.client.get('/api/state').json['records'][0];self.assertEqual(len(record['photos']),3);self.assertEqual(sum(p['is_cover'] for p in record['photos']),1)
+  self.assertTrue(next(p for p in record['photos'] if p['is_cover'])['name'].endswith('예약 사진.jpg'))
+  before=self.client.get('/api/state').json['records'];files=set(MEDIA.iterdir());row.update(checkin='2026-04-01',checkout='2026-04-02',platform='네이버')
+  self.assertEqual(self.client.post('/api/import/commit',json={'records':[row]},headers=self.headers).status_code,400)
+  self.assertEqual(self.client.get('/api/state').json['records'],before);self.assertEqual(set(MEDIA.iterdir()),files)
+  row.update(platform='캠핏',thumbnail=None)
+  with patch('shutil.copyfile',side_effect=OSError('disk failure')),self.assertLogs(app.logger,level='ERROR'):
+   self.assertEqual(self.client.post('/api/import/commit',json={'records':[row]},headers=self.headers).status_code,500)
+  self.assertEqual(self.client.get('/api/state').json['records'],before);self.assertEqual(set(MEDIA.iterdir()),files);self.assertTrue(original_files<=files)

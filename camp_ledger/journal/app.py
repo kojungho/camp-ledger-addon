@@ -368,10 +368,25 @@ def import_commit():
  try:
   with connection() as c:
    c.execute('BEGIN IMMEDIATE');existing={identity(json.loads(row['body'])) for row in c.execute('SELECT body FROM records')}
-   for body,thumbnail in zip(bodies,thumbnails):
+   for body,thumbnail,source_row in zip(bodies,thumbnails,rows):
     key=identity(body)
     if key in existing:skipped+=1;continue
+    inherited=[];source=source_row.get('inherit_from')
+    if source:
+     if not isinstance(source,str) or len(source)>80:raise ValueError('가져올 기존 기록을 확인해주세요.')
+     original=c.execute('SELECT body FROM records WHERE id=?',(source,)).fetchone()
+     if not original:raise ValueError('가져올 기존 기록이 삭제되었습니다. 캠핑장을 다시 검색해주세요.')
+     import unicodedata,re
+     normal=lambda value:re.sub(r'\s+',' ',unicodedata.normalize('NFKC',str(value or '')).strip())
+     previous=json.loads(original['body'])
+     if any(not normal(body.get(key)) or normal(body.get(key))!=normal(previous.get(key)) for key in ('name','location','platform')):raise ValueError('기존 기록과 캠핑장명·주소·플랫폼이 다릅니다. 캠핑장을 다시 검색해주세요.')
+     photos=[dict(p) for p in c.execute('SELECT * FROM photos WHERE record_id=?',(source,))]
+     cover=next((p for p in photos if p['kind']=='gallery' and p['is_cover']),next((p for p in photos if p['kind']=='gallery'),None))
+     inherited=[p for p in photos if p['kind']=='layout' or p==cover]
     ident=uuid.uuid4().hex;c.execute('INSERT INTO records VALUES(?,?)',(ident,json.dumps(body,ensure_ascii=False)));existing.add(key);added.append(ident)
+    for photo in inherited:
+     pid=uuid.uuid4().hex;path=MEDIA/(pid+'.jpg');written.append(path);shutil.copyfile(MEDIA/(photo['id']+'.jpg'),path)
+     c.execute('INSERT INTO photos(id,record_id,kind,name,memo,is_cover) VALUES(?,?,?,?,?,?)',(pid,ident,photo['kind'],photo['name'],photo['memo'],int(photo['kind']=='gallery' and not thumbnail)))
     if thumbnail:
      pid=uuid.uuid4().hex;path=MEDIA/(pid+'.jpg');written.append(path);path.write_bytes(thumbnail)
      c.execute('INSERT INTO photos(id,record_id,kind,name,memo,is_cover) VALUES(?,?,?,?,?,1)',(pid,ident,'gallery',body['name']+' 예약 사진.jpg',''))
