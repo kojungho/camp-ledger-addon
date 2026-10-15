@@ -43,7 +43,7 @@ def upgrade_columns(settings):
 def get_settings(c):
  s=upgrade_columns(json.loads(c.execute('SELECT body FROM settings WHERE id=1').fetchone()[0]));s.setdefault('platforms',list(DEFAULT_PLATFORMS));s.setdefault('scroll_top','right-bottom');s.setdefault('kakao_key','');s.setdefault('detail_order',list(DETAIL_FIELDS));s.setdefault('field_labels',{});s.setdefault('selection_enabled',True);s.setdefault('duplicate_enabled',True)
  for mode in ('desktop','display_mobile'):
-  s[mode].setdefault('link_size',20);s[mode].setdefault('order',list(s['order']) if mode=='desktop' else ['name','site','checkin','checkout','nights','location','price','notes','platform','booking_url','map_url','photos','layout']);s[mode].setdefault('visible',dict(s['visible']));s[mode].setdefault('photo_size',38)
+  s[mode].setdefault('link_size',20);s[mode].setdefault('order',list(s['order']) if mode=='desktop' else ['name','site','checkin','checkout','nights','location','price','notes','platform','booking_url','map_url','photos','layout']);s[mode].setdefault('visible',dict(s['visible']));s[mode].setdefault('photo_size',38);s[mode].setdefault('row_height',0)
  s.setdefault('empty_text',{})
  return s
 mobile=install_mobile(app,connection,get_settings,DATA)
@@ -313,7 +313,9 @@ def settings():
   if not isinstance(mode_order,list) or any(not isinstance(k,str) for k in mode_order) or len(mode_order)!=len(FIELDS) or set(mode_order)!=set(FIELDS):raise ValueError('PC·모바일 항목 순서를 확인해주세요.')
   if not isinstance(mode_visible,dict) or set(mode_visible)!=set(FIELDS) or any(type(v)!=bool for v in mode_visible.values()) or not any(mode_visible.values()):raise ValueError('PC·모바일에 최소 한 항목을 표시해주세요.')
   if type(photo_size)!=int or not 20<=photo_size<=200:raise ValueError('사진 크기는 20~200px입니다.')
-  display[key]={'font':font,'padding':padding,'widths':widths,'link_size':link_size,'order':mode_order,'visible':mode_visible,'photo_size':photo_size}
+  row_height=x.get('row_height',0)
+  if type(row_height)!=int or (row_height!=0 and not 20<=row_height<=400):raise ValueError('행 높이는 자동(0) 또는 20~400px입니다.')
+  display[key]={'row_height':row_height,'font':font,'padding':padding,'widths':widths,'link_size':link_size,'order':mode_order,'visible':mode_visible,'photo_size':photo_size}
  if raw.get('picker') not in ('files','gallery'):raise ValueError('사진 선택 방식을 확인해주세요.')
  with connection() as c:
   c.execute('BEGIN IMMEDIATE');s=get_settings(c);platforms=raw.get('platforms',s['platforms'])

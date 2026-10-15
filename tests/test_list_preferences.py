@@ -12,6 +12,14 @@ class ListPreferencesTest(unittest.TestCase):
   saved=client.get('/api/state').json['settings'];self.assertFalse(saved['desktop']['visible']['site']);self.assertTrue(saved['display_mobile']['visible']['site']);self.assertNotEqual(saved['desktop']['order'],saved['display_mobile']['order']);self.assertEqual(saved['field_labels']['notes'],'  ');self.assertEqual(saved['field_labels']['site'],'');self.assertEqual(saved['empty_text']['site'],'');self.assertEqual(saved['desktop']['photo_size'],120)
   s['desktop']['photo_size']=201;self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,400)
   s['desktop']['photo_size']=120;s['empty_text']['photos']='x';self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,400)
+ def test_journal_pc_row_height(self):
+  client=journal.test_client();s=client.get('/api/state').json['settings'];self.assertEqual(s['desktop']['row_height'],0)
+  s['desktop']['row_height']=86
+  self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,200)
+  self.assertEqual(client.get('/api/state').json['settings']['desktop']['row_height'],86)
+  for invalid in [19,401,-1,True,'60']:
+   s['desktop']['row_height']=invalid;self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,400)
+  s['desktop']['row_height']=0;self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,200)
  def test_ledger_blank_labels_empty_text_selection_and_photo_size(self):
   client=ledger.app.test_client();s=client.get('/api/state').json['settings'];d=s['display'];d.update(fieldLabels={'name':'','buyer':'  '},emptyText={'notes':'없음','buyer':''},photoSize=100,selectionEnabled=False)
   self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,200)

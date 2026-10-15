@@ -65,3 +65,5 @@ header>nav{flex-wrap:wrap}#companionApp{white-space:nowrap}.hub-install-guide p{
 @media(min-width:701px){#table .mini-gallery img{width:var(--journal-photo-size,38px);height:var(--journal-photo-size,38px)}#table .sort-heading{white-space:pre-wrap}}#detailDuplicate{margin-right:auto}.pref-row>[data-empty-text]{width:120px;flex:1;min-width:70px;padding:7px}
 @media(min-width:701px){main{max-width:none}}.detail-field>small{white-space:pre-wrap}
 .card-layout-thumb{width:48px;height:48px;object-fit:cover;border-radius:6px;cursor:zoom-in}.card-extra small{white-space:pre-wrap}
+
+@media(min-width:701px){#table tbody td{height:var(--journal-row-height,auto)}}
