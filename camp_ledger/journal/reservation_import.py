@@ -51,3 +51,46 @@ def image_text(file):
    side=recognize(image.crop((int(image.width*.30),0,image.width,image.height)),'text-side');side_rows=parse_reservations(side)
    if len(side_rows)>len(rows) or (side_rows and len(side_rows)==len(rows) and any(re.match(r'^[A-Za-z]',r['name']) for r in rows)):return side
    return full
+
+def parse_reservation_text(text):
+ """Extract only booking fields; recipient names and the original clipboard are not stored."""
+ from datetime import date,timedelta
+ text=unicodedata.normalize('NFKC',text).replace('\r','')[:10000]
+ if re.search(r'예약\s*취소|취소\s*완료|취소되었',text):return []
+ rows=parse_reservations(text)
+ if rows:return rows
+ pattern=r'(20\d{2})[./-](\d{1,2})[./-](\d{1,2})'
+ dates=list(re.finditer(pattern,text));duration=re.search(r'(\d{1,3})\s*박',text)
+ start_match=re.search(r'(?:입실(?:일)?|체크인|이용시작)\s*[:：]?\s*'+pattern,text)
+ end_match=re.search(r'(?:퇴실(?:일)?|체크아웃|이용종료)\s*[:：]?\s*'+pattern,text)
+ if not dates:return []
+ def as_date(match):return date(*map(int,match.groups()[-3:]))
+ try:
+  start=as_date(start_match or dates[0])
+  if end_match:end=as_date(end_match)
+  elif duration:
+   nights=int(duration.group(1))
+   if not 1<=nights<=366:return []
+   end=start+timedelta(days=nights)
+  elif len(dates)>1:end=as_date(dates[1])
+  else:return []
+ except ValueError:return []
+ if not 0<=(end-start).days<=366:return []
+ named=re.search(r'(?:캠핑장명|캠핑장|업체명|숙소명)\s*[:：]\s*([^\n,]+)',text)
+ tail=re.search(r'(?:완료|확정)\s*[!！:：~\s]*([^,\n]+)\s*$',text)
+ if named:name=named.group(1).strip()
+ elif tail and re.search(r'캠프|캠핑|야영장|목장|휴양림|글램핑|카라반',tail.group(1)):name=tail.group(1).strip()
+ else:
+  candidates=[line.strip() for line in text.splitlines() if re.search(r'캠프|캠핑장|야영장|글램핑|카라반',line) and not re.search(pattern,line) and not re.search(r'예약번호|http|고객센터|취소|입실|퇴실',line)]
+  name=candidates[0] if len(candidates)==1 else ''
+ if not name or len(name)>200:return []
+ site=re.search(r'(?:사이트명|사이트|자리|구역)\s*[:：]\s*([^,\n]+)',text)
+ if site:site=site.group(1).strip()
+ elif ',' in text[:dates[0].start()]:site=text[:dates[0].start()].rstrip(' ,').split(',')[-1].strip()
+ else:site=''
+ row={'name':name,'site':site,'checkin':start.isoformat(),'checkout':end.isoformat()}
+ amount=re.search(r'(?:결제금액|이용금액|총금액|금액|요금)\s*[:：]?\s*([\d,]+)\s*원',text)
+ if amount:row['price']=int(amount.group(1).replace(',',''))
+ for platform in ('캠핏','땡큐캠핑','네이버','캠핑톡'):
+  if platform in text:row['platform']=platform;break
+ return [row]

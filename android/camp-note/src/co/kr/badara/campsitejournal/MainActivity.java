@@ -3,6 +3,8 @@ package co.kr.badara.campsitejournal;
 import android.app.Activity;
 import android.app.DownloadManager;
 import android.content.Context;
+import android.content.ClipboardManager;
+import android.content.ClipData;
 import android.content.res.Configuration;
 import android.graphics.drawable.ColorDrawable;
 import android.view.WindowInsetsController;
@@ -61,9 +63,12 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void preparePhotoPicker(String mode) {requestedPhotoPickerMode="gallery".equals(mode)?"gallery":"files";}
         @JavascriptInterface public void setEditing(boolean value){if(ledger)ledgerEditing=value;else journalEditing=value;editing=journalEditing||ledgerEditing;if(!editing&&updater!=null)runOnUiThread(()->updater.maybeInstall());}
         @JavascriptInterface public void flushCookies(){CookieManager.getInstance().flush();}
+        @JavascriptInterface public String readReservationClipboard(){
+            try{ClipboardManager clipboard=(ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE);if(clipboard==null||!clipboard.hasPrimaryClip())return "";ClipData clip=clipboard.getPrimaryClip();if(clip==null||clip.getItemCount()==0)return "";CharSequence value=clip.getItemAt(0).getText();if(value==null)return "";String text=value.toString();return text.length()>10000?text.substring(0,10000):text;}catch(Exception unavailable){return "";}
+        }
         @JavascriptInterface public String getVersion() {return appVersion();}
         @JavascriptInterface public boolean isMapAppInstalled(String kind){
-            String packageName="kakaomap".equals(kind)?"net.daum.android.map":"navermap".equals(kind)?"com.nhn.android.nmap":"kakaonavi".equals(kind)?"com.locnall.KimGiSa":null;
+            String packageName="kakaomap".equals(kind)?"net.daum.android.map":"navermap".equals(kind)?"com.nhn.android.nmap":"kakaonavi".equals(kind)?"com.locnall.KimGiSa":"tmap".equals(kind)?"com.skt.tmap.ku":null;
             if(packageName==null)return false;
             try{return getPackageManager().getApplicationInfo(packageName,0).enabled;}catch(Exception unavailable){return false;}
         }
@@ -113,6 +118,7 @@ public class MainActivity extends Activity {
         if("kakaomap".equals(scheme))packageName="net.daum.android.map";
         else if("nmap".equals(scheme))packageName="com.nhn.android.nmap";
         else if("kakaonavi-sdk".equals(scheme)||"kakaonavi".equals(scheme))packageName="com.locnall.KimGiSa";
+        else if("tmap".equals(scheme))packageName="com.skt.tmap.ku";
         else return false;
         try{startActivity(new Intent(Intent.ACTION_VIEW,destination).setPackage(packageName).addCategory(Intent.CATEGORY_BROWSABLE));}
         catch(Exception unavailable){

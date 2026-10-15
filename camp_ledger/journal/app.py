@@ -41,7 +41,7 @@ def upgrade_columns(settings):
    widths=settings.setdefault(mode,{}).setdefault('widths',{});widths.setdefault('nights',widths.get('checkout',100))
  return settings
 def get_settings(c):
- s=upgrade_columns(json.loads(c.execute('SELECT body FROM settings WHERE id=1').fetchone()[0]));s.setdefault('platforms',list(DEFAULT_PLATFORMS));s.setdefault('scroll_top','bottom-right');s['scroll_top']={'left-top':'top-left','right-top':'top-right','left-bottom':'bottom-left','right-bottom':'bottom-right','left-middle':'bottom-left','right-middle':'bottom-right'}.get(s['scroll_top'],s['scroll_top']);s.setdefault('add_position','bottom-right');s.setdefault('kakao_key','');s.setdefault('detail_order',list(DETAIL_FIELDS));s.setdefault('field_labels',{});s.setdefault('selection_enabled',True);s.setdefault('duplicate_enabled',True)
+ s=upgrade_columns(json.loads(c.execute('SELECT body FROM settings WHERE id=1').fetchone()[0]));s.setdefault('platforms',list(DEFAULT_PLATFORMS));s.setdefault('scroll_top','bottom-right');s['scroll_top']={'left-top':'top-left','right-top':'top-right','left-bottom':'bottom-left','right-bottom':'bottom-right','left-middle':'bottom-left','right-middle':'bottom-right'}.get(s['scroll_top'],s['scroll_top']);s.setdefault('add_position','bottom-right');s.setdefault('kakao_key','');s.setdefault('detail_order',list(DETAIL_FIELDS));s.setdefault('field_labels',{});s.setdefault('selection_enabled',True);s.setdefault('duplicate_enabled',True);s.setdefault('detail_duplicate_enabled',s['duplicate_enabled']);s.setdefault('click_actions',{'list':{'name':{'copy':False,'map':True},'location':{'copy':False,'map':True}},'detail':{'name':{'copy':True,'map':False},'location':{'copy':True,'map':False}}})
  for mode in ('desktop','display_mobile'):
   s[mode].setdefault('link_size',20);s[mode].setdefault('order',list(s['order']) if mode=='desktop' else ['name','site','checkin','checkout','nights','location','price','notes','platform','booking_url','map_url','photos','layout']);s[mode].setdefault('visible',dict(s['visible']));s[mode].setdefault('photo_size',38);s[mode].setdefault('row_height',0)
  s.setdefault('empty_text',{})
@@ -55,8 +55,8 @@ def guard():
 @app.after_request
 def headers(r):
  r.headers['X-Content-Type-Options']='nosniff';r.headers['Referrer-Policy']='strict-origin-when-cross-origin';r.headers['Cache-Control']='no-store' if request.path.startswith('/api/') else 'no-cache'
- if request.method in ('POST','PUT','DELETE') and request.path.startswith('/api/') and r.status_code<400 and request.path!='/api/import/preview':live_sync.publish()
- r.headers['Content-Security-Policy']="default-src 'self'; img-src 'self' data: blob: https://tile.openstreetmap.org https://*.kakao.com https://*.daumcdn.net https://*.daum.net https://*.kakaocdn.net; style-src 'self' 'unsafe-inline'; script-src 'self' https://dapi.kakao.com https://*.daumcdn.net https://*.daum.net https://*.kakaocdn.net; connect-src 'self' https://*.kakao.com https://*.daumcdn.net https://*.daum.net; frame-src 'self' kakaonavi-sdk: kakaomap: nmap: intent: https://kakaonavi.kakao.com https://www.openstreetmap.org https://postcode.map.kakao.com https://postcode.map.daum.net; base-uri 'self'; form-action 'self'"
+ if request.method in ('POST','PUT','DELETE') and request.path.startswith('/api/') and r.status_code<400 and request.path not in ('/api/import/preview','/api/import/text-preview'):live_sync.publish()
+ r.headers['Content-Security-Policy']="default-src 'self'; img-src 'self' data: blob: https://tile.openstreetmap.org https://*.kakao.com https://*.daumcdn.net https://*.daum.net https://*.kakaocdn.net; style-src 'self' 'unsafe-inline'; script-src 'self' https://dapi.kakao.com https://*.daumcdn.net https://*.daum.net https://*.kakaocdn.net; connect-src 'self' https://*.kakao.com https://*.daumcdn.net https://*.daum.net; frame-src 'self' kakaonavi-sdk: kakaomap: nmap: tmap: intent: https://kakaonavi.kakao.com https://www.openstreetmap.org https://postcode.map.kakao.com https://postcode.map.daum.net; base-uri 'self'; form-action 'self'"
  return r
 @app.errorhandler(ValueError)
 def invalid(e):return jsonify(error=str(e)),400
@@ -127,7 +127,7 @@ def reject_duplicate(c,body,exclude=None):
   abort(409,description='같은 캠핑장과 입실·퇴실일의 기록이 이미 있습니다. 기존 기록을 수정하거나 기간을 변경해주세요.')
 
 @app.errorhandler(409)
-def conflict(e):return jsonify(error=e.description),409
+def conflict(e):return jsonify(error=e.description,code='duplicate_record' if e.description.startswith('같은 캠핑장') else 'conflict'),409
 
 @app.post('/api/records')
 def create():
@@ -291,6 +291,14 @@ def import_preview():
  with connection() as c:existing={identity(json.loads(row['body'])) for row in c.execute('SELECT body FROM records')}
  rows=parse_reservations(text)
  return jsonify(text=text,records=[{**row,'duplicate':identity(row) in existing} for row in rows])
+@app.post('/api/import/text-preview')
+def import_text_preview():
+ from .reservation_import import parse_reservation_text,identity
+ raw=request.get_json(silent=True)
+ if not isinstance(raw,dict) or not isinstance(raw.get('text'),str) or len(raw['text'])>10000:raise ValueError('예약문자는 10,000자 이하로 붙여넣어주세요.')
+ rows=parse_reservation_text(raw['text'])
+ with connection() as c:existing={identity(json.loads(row['body'])) for row in c.execute('SELECT body FROM records')}
+ return jsonify(records=[{**row,'duplicate':identity(row) in existing} for row in rows])
 @app.post('/api/import/commit')
 def import_commit():
  from .reservation_import import identity
@@ -362,14 +370,20 @@ def settings():
   if scroll_top not in ('top-left','top-center','top-right','bottom-left','bottom-center','bottom-right'):raise ValueError('맨 위로 버튼 위치를 확인해주세요.')
   add_position=raw.get('add_position',s['add_position'])
   if add_position not in ('top-left','top-center','top-right','bottom-left','bottom-center','bottom-right'):raise ValueError('추가 버튼 위치를 확인해주세요.')
-  actions={k:raw.get(k,s[k]) for k in ('selection_enabled','duplicate_enabled')}
+  actions={k:raw.get(k,s[k]) for k in ('selection_enabled','duplicate_enabled','detail_duplicate_enabled')}
   if any(type(value)!=bool for value in actions.values()):raise ValueError('선택·복제 표시 설정을 확인해주세요.')
+  click_actions=raw.get('click_actions',s['click_actions'])
+  if not isinstance(click_actions,dict) or set(click_actions)!=set(('list','detail')):raise ValueError('클릭 동작 설정을 확인해주세요.')
+  for view in click_actions.values():
+   if not isinstance(view,dict) or set(view)!=set(('name','location')):raise ValueError('클릭 동작 설정을 확인해주세요.')
+   for flags in view.values():
+    if not isinstance(flags,dict) or set(flags)!=set(('copy','map')) or any(type(v)!=bool for v in flags.values()):raise ValueError('클릭 동작 설정을 확인해주세요.')
   field_labels=raw.get('field_labels',s['field_labels'])
   if not isinstance(field_labels,dict) or any(k not in FIELDS or not isinstance(v,str) or len(v)>40 for k,v in field_labels.items()):raise ValueError('항목 이름은 공백을 포함해 40자 이하로 입력해주세요.')
   field_labels=dict(field_labels)
   empty_text=raw.get('empty_text',s['empty_text'])
   if not isinstance(empty_text,dict) or any(k not in FIELDS or k in ('photos','layout') or not isinstance(v,str) or len(v)>100 for k,v in empty_text.items()):raise ValueError('빈 내용 표시는 사진을 제외한 항목에 100자 이하로 입력해주세요.')
-  s.update(**actions,add_position=add_position,empty_text=empty_text,field_labels=field_labels,platform_deleted=sorted(deleted),detail_order=detail_order,kakao_key=kakao_key,scroll_top=scroll_top,platforms=merged,order=order,visible=visible,picker=raw['picker'],**display);c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(s,ensure_ascii=False),))
+  s.update(**actions,click_actions=click_actions,add_position=add_position,empty_text=empty_text,field_labels=field_labels,platform_deleted=sorted(deleted),detail_order=detail_order,kakao_key=kakao_key,scroll_top=scroll_top,platforms=merged,order=order,visible=visible,picker=raw['picker'],**display);c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(s,ensure_ascii=False),))
  return jsonify(ok=True)
 @app.get('/api/backup')
 def backup():
