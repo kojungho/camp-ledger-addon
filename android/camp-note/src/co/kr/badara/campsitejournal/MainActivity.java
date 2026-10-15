@@ -62,6 +62,16 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void setEditing(boolean value){if(ledger)ledgerEditing=value;else journalEditing=value;editing=journalEditing||ledgerEditing;if(!editing&&updater!=null)runOnUiThread(()->updater.maybeInstall());}
         @JavascriptInterface public void flushCookies(){CookieManager.getInstance().flush();}
         @JavascriptInterface public String getVersion() {return appVersion();}
+        @JavascriptInterface public boolean isMapAppInstalled(String kind){
+            String packageName="kakaomap".equals(kind)?"net.daum.android.map":"navermap".equals(kind)?"com.nhn.android.nmap":"kakaonavi".equals(kind)?"com.locnall.KimGiSa":null;
+            if(packageName==null)return false;
+            try{return getPackageManager().getApplicationInfo(packageName,0).enabled;}catch(Exception unavailable){return false;}
+        }
+        @JavascriptInterface public void openMapFallback(String url){
+            try{Uri uri=Uri.parse(url);String host=uri.getHost();if(!"https".equals(uri.getScheme())||!("map.kakao.com".equals(host)||"map.naver.com".equals(host)||"play.google.com".equals(host)||"apps.apple.com".equals(host)))return;
+                runOnUiThread(()->{try{startActivity(new Intent(Intent.ACTION_VIEW,uri));}catch(Exception unavailable){Toast.makeText(MainActivity.this,"브라우저나 스토어 앱을 확인해주세요.",Toast.LENGTH_SHORT).show();}});
+            }catch(Exception ignored){}
+        }
         @JavascriptInterface public void openMapUrl(String url){runOnUiThread(()->{try{if(!openMappingUri(Uri.parse(url)))Toast.makeText(MainActivity.this,"지도 연결 주소를 확인해주세요.",Toast.LENGTH_SHORT).show();}catch(Exception ignored){}});}
     }
     private String appVersion(){try{return getPackageManager().getPackageInfo(getPackageName(),0).versionName;}catch(Exception e){return "";}}

@@ -1,10 +1,10 @@
 """Local screenshot OCR and conservative reservation extraction; no external service."""
-import io,re,subprocess,tempfile
+import io,re,subprocess,tempfile,unicodedata
 from pathlib import Path
 from PIL import Image,ImageOps,UnidentifiedImageError
 
 def identity(record):
- return (re.sub(r'[^\w]','',str(record.get('name',''))).casefold(),record.get('checkin',''),record.get('checkout',''))
+ return (re.sub(r'[\W_]+','',unicodedata.normalize('NFKC',str(record.get('name','')))).casefold(),record.get('checkin',''),record.get('checkout',''))
 
 def parse_reservations(text):
  text=re.sub(r'\b(2[0-9])([01][0-9])\.(\d{1,2})',r'\1.\2.\3',text)

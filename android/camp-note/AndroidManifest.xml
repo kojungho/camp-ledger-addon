@@ -1,5 +1,6 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="co.kr.badara.campsitejournal" android:versionCode="8" android:versionName="1.0.7">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="co.kr.badara.campsitejournal" android:versionCode="9" android:versionName="1.0.8">
 <uses-sdk android:minSdkVersion="29" android:targetSdkVersion="36"/><uses-permission android:name="android.permission.INTERNET"/><uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+<queries><package android:name="net.daum.android.map"/><package android:name="com.nhn.android.nmap"/><package android:name="com.locnall.KimGiSa"/></queries>
 <application android:label="캠핑 노트" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:icon="@drawable/camp_icon" android:allowBackup="false" android:usesCleartextTraffic="false" android:supportsRtl="true">
 <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:configChanges="orientation|screenSize|keyboardHidden|uiMode">
 <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>

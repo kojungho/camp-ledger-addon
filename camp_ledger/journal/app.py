@@ -119,6 +119,16 @@ def addresses():
  body,status=search_address(request.args.get('q',''))
  return jsonify(body),status
 
+def reject_duplicate(c,body,exclude=None):
+ from .reservation_import import identity
+ if not body.get('checkin') or not body.get('checkout'):return
+ key=identity(body)
+ if any(row['id']!=exclude and identity(json.loads(row['body']))==key for row in c.execute('SELECT id,body FROM records')):
+  abort(409,description='같은 캠핑장과 입실·퇴실일의 기록이 이미 있습니다. 기존 기록을 수정하거나 기간을 변경해주세요.')
+
+@app.errorhandler(409)
+def conflict(e):return jsonify(error=e.description),409
+
 @app.post('/api/records')
 def create():
  raw=request.get_json();b=clean(raw);ident=str(uuid.uuid4());source=raw.get('clone_from');staged=[]
@@ -126,6 +136,7 @@ def create():
  try:
   with connection() as c:
    c.execute('BEGIN IMMEDIATE')
+   reject_duplicate(c,b)
    if source and not c.execute('SELECT 1 FROM records WHERE id=?',(source,)).fetchone():raise ValueError('원본 기록이 삭제되어 복제할 수 없습니다.')
    c.execute('INSERT INTO records VALUES(?,?)',(ident,json.dumps(b,ensure_ascii=False)))
    if source:
@@ -154,6 +165,9 @@ def bulk_delete():
 def update(ident):
  b=clean(request.get_json())
  with connection() as c:
+  c.execute('BEGIN IMMEDIATE')
+  if not c.execute('SELECT 1 FROM records WHERE id=?',(ident,)).fetchone():abort(404)
+  reject_duplicate(c,b,ident)
   if not c.execute('UPDATE records SET body=? WHERE id=?',(json.dumps(b,ensure_ascii=False),ident)).rowcount:abort(404)
  return jsonify(ok=True)
 @app.delete('/api/records/<ident>')
@@ -211,6 +225,7 @@ def save_with_photos():
   with connection() as c:
    c.execute('BEGIN IMMEDIATE');owner=ident or source
    if owner and not c.execute('SELECT 1 FROM records WHERE id=?',(owner,)).fetchone():raise ValueError('기록이 삭제되어 저장할 수 없습니다.')
+   reject_duplicate(c,body,ident)
    existing={p['id']:dict(p) for p in c.execute('SELECT * FROM photos WHERE record_id=?',(owner,))} if owner else {}
    if not set(keep_values)<=set(existing) or not set(remove)<=set(existing) or set(remove)&set(keep_values) or remove and not ident:raise ValueError('현재 기록에 속한 사진만 저장할 수 있습니다.')
    if ident:c.execute('UPDATE records SET body=? WHERE id=?',(json.dumps(body,ensure_ascii=False),target))
