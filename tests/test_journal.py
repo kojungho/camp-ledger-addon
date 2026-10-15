@@ -122,7 +122,7 @@ class JournalTest(unittest.TestCase):
   self.assertEqual(response.status_code,500);self.assertEqual(self.client.get('/api/state').json['records'][0],original);self.assertEqual(set(MEDIA.iterdir()),files)
  def test_hub_requires_journal_access_and_allows_same_origin_frames(self):
   response=self.client.get('/hub');self.assertEqual(response.status_code,200);self.assertIn('ledgerFrame',response.text);self.assertIn("frame-src 'self'",response.headers['Content-Security-Policy']);response.close();self.assertEqual(self.client.get('/manifest.webmanifest').json['start_url'],'./hub')
-  outside={'journal.entrypoint':'external','SERVER_PORT':'8098'};self.assertEqual(app.test_client().get('/hub',environ_overrides=outside).status_code,401)
+  outside={'journal.entrypoint':'external','SERVER_PORT':'8098'};response=app.test_client().get('/hub',environ_overrides=outside);self.assertEqual(response.status_code,200);self.assertIn('connectForm',response.text);self.assertNotIn('journalTab',response.text);self.assertNotIn('hubSettings',response.text);response.close();self.assertEqual(app.test_client().get('/api/state',environ_overrides=outside).status_code,401)
  def test_atomic_bad_upload(self):
   ident=self.record();r=self.client.post('/api/records/'+ident+'/photos/gallery',data={'photos':(io.BytesIO(b'not image'),'bad.jpg')},headers=self.headers);self.assertEqual(r.status_code,400)
   self.assertEqual(self.client.get('/api/state').json['records'][0]['photos'],[])

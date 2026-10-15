@@ -47,7 +47,7 @@ def install_mobile(app, connection, get_settings, data_dir):
             key=request.cookies.get(COOKIE) or request.headers.get('Authorization','').removeprefix('Bearer ')
             device=valid_key(key,c) if prefs['enabled'] else None
             if not device:
-                if request.path=='/': return app.send_static_file('mobile-connect.html')
+                if request.path in ('/','/hub'): return app.send_static_file('mobile-connect.html')
                 abort(401,description='애드온에서 이 기기를 연결해주세요.')
             if device['last_used'] is None or device['last_used']<time.time()-60:
                 c.execute('UPDATE devices SET last_used=? WHERE id=?',(time.time(),device['id']))

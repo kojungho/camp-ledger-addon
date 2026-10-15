@@ -77,3 +77,5 @@ header>nav{flex-wrap:wrap}#companionApp{white-space:nowrap}.hub-install-guide p{
 .click-action-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--border)}.click-action-row strong{min-width:80px}.click-action-row .check{display:inline-flex;flex-direction:row;align-items:center;gap:6px}.click-action-row input{width:18px}#duplicateNotice{width:min(480px,92vw)}.copy-value:disabled{color:inherit;opacity:1;cursor:text}.copy-value:disabled:hover{background:transparent}
 
 .address-app-choices{grid-template-columns:repeat(4,minmax(0,1fr))}.address-app-choices>button:disabled{opacity:.35;cursor:default}.address-app-choices>button:disabled img{filter:grayscale(1)}@media(max-width:420px){.address-app-choices img{width:46px;height:46px}.address-app-choices>a,.address-app-choices>button{padding:10px 4px;font-size:11px}}
+
+body[data-camp-hub="1"] #settings,body[data-camp-hub="1"] #install,body[data-camp-hub="1"] #settings-btn,body[data-camp-hub="1"] #header-settings{display:none!important}[data-connected-device="1"] #install,[data-connected-device="1"] #mobile-install-section{display:none!important}
