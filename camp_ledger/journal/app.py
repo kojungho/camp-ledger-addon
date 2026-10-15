@@ -42,7 +42,9 @@ def upgrade_columns(settings):
  return settings
 def get_settings(c):
  s=upgrade_columns(json.loads(c.execute('SELECT body FROM settings WHERE id=1').fetchone()[0]));s.setdefault('platforms',list(DEFAULT_PLATFORMS));s.setdefault('scroll_top','right-bottom');s.setdefault('kakao_key','');s.setdefault('detail_order',list(DETAIL_FIELDS));s.setdefault('field_labels',{});s.setdefault('selection_enabled',True);s.setdefault('duplicate_enabled',True)
- for mode in ('desktop','display_mobile'):s[mode].setdefault('link_size',20)
+ for mode in ('desktop','display_mobile'):
+  s[mode].setdefault('link_size',20);s[mode].setdefault('order',list(s['order']) if mode=='desktop' else ['name','site','checkin','checkout','nights','location','price','notes','platform','booking_url','map_url','photos','layout']);s[mode].setdefault('visible',dict(s['visible']));s[mode].setdefault('photo_size',38)
+ s.setdefault('empty_text',{})
  return s
 mobile=install_mobile(app,connection,get_settings,DATA)
 @app.before_request
@@ -307,7 +309,11 @@ def settings():
   if not 8<=font<=60 or not 2<=padding<=60 or any(not 20<=v<=1200 for v in widths.values()):raise ValueError('열 너비 20px, 글자 8px, 여백 2px 이상으로 설정해주세요.')
   link_size=x.get('link_size',20)
   if type(link_size)!=int or not 8<=link_size<=80:raise ValueError('링크 아이콘 크기는 8~80px로 설정해주세요.')
-  display[key]={'font':font,'padding':padding,'widths':widths,'link_size':link_size}
+  mode_order=x.get('order',order);mode_visible=x.get('visible',visible);photo_size=x.get('photo_size',38)
+  if not isinstance(mode_order,list) or any(not isinstance(k,str) for k in mode_order) or len(mode_order)!=len(FIELDS) or set(mode_order)!=set(FIELDS):raise ValueError('PC·모바일 항목 순서를 확인해주세요.')
+  if not isinstance(mode_visible,dict) or set(mode_visible)!=set(FIELDS) or any(type(v)!=bool for v in mode_visible.values()) or not any(mode_visible.values()):raise ValueError('PC·모바일에 최소 한 항목을 표시해주세요.')
+  if type(photo_size)!=int or not 20<=photo_size<=200:raise ValueError('사진 크기는 20~200px입니다.')
+  display[key]={'font':font,'padding':padding,'widths':widths,'link_size':link_size,'order':mode_order,'visible':mode_visible,'photo_size':photo_size}
  if raw.get('picker') not in ('files','gallery'):raise ValueError('사진 선택 방식을 확인해주세요.')
  with connection() as c:
   c.execute('BEGIN IMMEDIATE');s=get_settings(c);platforms=raw.get('platforms',s['platforms'])
@@ -339,9 +345,11 @@ def settings():
   actions={k:raw.get(k,s[k]) for k in ('selection_enabled','duplicate_enabled')}
   if any(type(value)!=bool for value in actions.values()):raise ValueError('선택·복제 표시 설정을 확인해주세요.')
   field_labels=raw.get('field_labels',s['field_labels'])
-  if not isinstance(field_labels,dict) or any(k not in FIELDS or not isinstance(v,str) or not v.strip() or len(v)>40 for k,v in field_labels.items()):raise ValueError('항목 이름은 1~40자로 입력해주세요.')
-  field_labels={k:v.strip() for k,v in field_labels.items()}
-  s.update(**actions,field_labels=field_labels,platform_deleted=sorted(deleted),detail_order=detail_order,kakao_key=kakao_key,scroll_top=scroll_top,platforms=merged,order=order,visible=visible,picker=raw['picker'],**display);c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(s,ensure_ascii=False),))
+  if not isinstance(field_labels,dict) or any(k not in FIELDS or not isinstance(v,str) or len(v)>40 for k,v in field_labels.items()):raise ValueError('항목 이름은 공백을 포함해 40자 이하로 입력해주세요.')
+  field_labels=dict(field_labels)
+  empty_text=raw.get('empty_text',s['empty_text'])
+  if not isinstance(empty_text,dict) or any(k not in FIELDS or k in ('photos','layout') or not isinstance(v,str) or len(v)>100 for k,v in empty_text.items()):raise ValueError('빈 내용 표시는 사진을 제외한 항목에 100자 이하로 입력해주세요.')
+  s.update(**actions,empty_text=empty_text,field_labels=field_labels,platform_deleted=sorted(deleted),detail_order=detail_order,kakao_key=kakao_key,scroll_top=scroll_top,platforms=merged,order=order,visible=visible,picker=raw['picker'],**display);c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(s,ensure_ascii=False),))
  return jsonify(ok=True)
 @app.get('/api/backup')
 def backup():
