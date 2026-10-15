@@ -49,8 +49,10 @@ class IntegrationTest(unittest.TestCase):
   from unittest.mock import patch
   entered=threading.Event();release=threading.Event();finished=threading.Event();statuses=[]
   application=combined_app(ledger.app,'ingress')
-  def recognize(_):
-   entered.set();release.wait(5);return '캠핑장\n일정 26.10.01-26.10.03'
+  def recognize(_,**kwargs):
+   entered.set();release.wait(5);text='캠핑장\n일정 26.10.01-26.10.03'
+   from journal.reservation_import import parse_reservations
+   return {'text':text,'records':parse_reservations(text)} if kwargs.get('with_records') else text
   def preview():statuses.append(Client(application,Response).post('/journal/api/import/preview',data={'image':(io.BytesIO(b'photo'),'image.png')},headers=self.headers).status_code)
   def state():statuses.append(Client(application,Response).get('/journal/api/state').status_code);finished.set()
   with patch('journal.reservation_import.image_text',side_effect=recognize):

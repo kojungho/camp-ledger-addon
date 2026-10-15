@@ -14,6 +14,12 @@ window.inheritLayoutDraft=record=>{
  if(record){const cover=(record.photos||[]).find(p=>p.kind==='gallery'&&p.is_cover)||(record.photos||[]).find(p=>p.kind==='gallery'),hasCover=draft.some(p=>p.kind==='gallery'&&p.is_cover);draft.push(...(record.photos||[]).filter(p=>p.kind==='layout'||p===cover).map(p=>({...p,is_cover:p===cover&&!hasCover?1:0,originalMemo:p.memo||'',draftKey:key(),inherited:true})))}
  paint();
 };
+window.setReservationThumbnail=async row=>{
+ for(const p of draft.filter(p=>p.reservationThumbnail))if(p.preview)URL.revokeObjectURL(p.preview);
+ draft=draft.filter(p=>!p.reservationThumbnail);
+ if(row.thumbnail){const bytes=Uint8Array.from(atob(row.thumbnail.split(',')[1]),c=>c.charCodeAt(0)),file=new File([bytes],(row.name||'캠핑장')+' 예약 사진.jpg',{type:'image/jpeg'});draft.push({draftKey:key(),file,preview:URL.createObjectURL(file),kind:'gallery',name:file.name,memo:'',is_cover:draft.some(p=>p.kind==='gallery'&&p.is_cover)?0:1,reservationThumbnail:true})}
+ paint();
+};
 window.bindMediaEditor=paint;
 window.saveMediaDraft=async(fields,id,source)=>{const form=new FormData(),keep=[],uploads=[];let cover=null;for(const p of draft){if(p.file){const field='photo_'+uploads.length;form.append(field,p.file);if(p.kind==='gallery'&&p.is_cover)cover=field;uploads.push({field,kind:p.kind,memo:p.memo||''})}else{keep.push({id:p.id,memo:p.memo||'',changed:(p.memo||'')!==p.originalMemo});if(p.kind==='gallery'&&p.is_cover)cover=p.id}}form.append('record',JSON.stringify({fields,id,cover,clone_from:source||inheritedSource,keep,uploads,remove:id?initialIds.filter(pid=>!keep.some(p=>p.id===pid)):[]}));return api('api/records/save','POST',form)};
 })();

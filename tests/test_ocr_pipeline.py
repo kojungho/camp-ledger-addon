@@ -1,8 +1,8 @@
 import io,subprocess,unittest
 from unittest.mock import patch
-from PIL import Image
+from PIL import Image,ImageDraw
 from werkzeug.datastructures import FileStorage
-from journal.reservation_import import image_text,parse_reservations
+from journal.reservation_import import image_text,parse_reservations,thumbnail_boxes
 TEXT='테스트 캠핑장\nA존-A01 · 2명\n일정 26.10.01(목)-26.10.03(토)'
 class OcrPipelineTest(unittest.TestCase):
  def photo(self):
@@ -26,3 +26,12 @@ class OcrPipelineTest(unittest.TestCase):
  def test_name_noise_cleanup_preserves_numeric_names(self):
   self.assertEqual(parse_reservations('= '+TEXT)[0]['name'],'테스트 캠핑장')
   self.assertEqual(parse_reservations('365 '+TEXT)[0]['name'],'365 테스트 캠핑장')
+
+ @patch('journal.reservation_import.subprocess.run')
+ def test_card_crops_keep_correct_photos_and_skip_whole_screen(self,run):
+  image=Image.new('RGB',(1000,2400),'white');draw=ImageDraw.Draw(image);draw.rectangle((0,0,999,90),fill='gray');draw.rectangle((0,2300,999,2399),fill='gray')
+  for y,color in ((400,'blue'),(1000,'red'),(1600,'green')):draw.rectangle((60,y,260,y+200),fill=color)
+  boxes=thumbnail_boxes(image);self.assertEqual(len(boxes),3)
+  stream=io.BytesIO();image.save(stream,'PNG');stream.seek(0)
+  run.side_effect=[self.success('캠핑장'+str(i)+'\n예약일 : 2026.10.0'+str(i+1)+' (2박3일)\n예약정보 : A'+str(i)) for i in range(3)]
+  result=image_text(FileStorage(stream=stream,filename='cards.png'),with_records=True);self.assertEqual(run.call_count,3);self.assertEqual(len(result['records']),3);self.assertTrue(all(r['thumbnail'].startswith('data:image/jpeg;base64,') for r in result['records']))

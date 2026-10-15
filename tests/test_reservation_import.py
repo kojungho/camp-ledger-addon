@@ -1,7 +1,11 @@
 import unittest
 from test_journal import app,connection,DEFAULTS
 from journal.reservation_import import parse_reservations,identity
-import json
+import json,io,base64
+from PIL import Image
+from journal.reservation_import import thumbnail_data,decode_thumbnail,thumbnail_boxes
+from unittest.mock import patch
+from journal.app import MEDIA
 TEXT='''25.07.03 결제
 예약번호 C20250703002378
 이용완료
@@ -34,3 +38,25 @@ class ReservationTest(unittest.TestCase):
   self.assertEqual(self.client.put('/api/settings',json=settings,headers=self.headers).status_code,200);self.assertEqual(self.client.get('/api/state').json['settings']['field_labels']['site'],'자리')
   settings.pop('field_labels');self.client.put('/api/settings',json=settings,headers=self.headers);self.assertEqual(self.client.get('/api/state').json['settings']['field_labels']['site'],'자리')
   settings['field_labels']={'id':'잘못된항목'};self.assertEqual(self.client.put('/api/settings',json=settings,headers=self.headers).status_code,400)
+
+ def test_start_date_nights_platform_format(self):
+  text='강촌 스칼라 캠프\n예약번호 : 9744403\n예약일 : 2026.10.09 (2박3일)\n예약정보 : G 존 / G 3\n재예약\n강촌 스칼라 캠프\n예약번호 : 8499602\n예약일 : 2025.05.02 (2박3일)\n예약정보 : D2 존 / D 2-2\n엘모르캠핑파크\n예약일 : 2025.04.26 (1박2일)\n예약정보 : F 패밀리존(1~11) / 3'
+  rows=parse_reservations(text);self.assertEqual(len(rows),3);self.assertEqual(rows[0]['checkout'],'2026-10-11');self.assertEqual(rows[1]['checkout'],'2025-05-04');self.assertEqual(rows[2]['checkout'],'2025-04-27');self.assertEqual(rows[0]['site'],'G 존 / G 3')
+ def test_thumbnail_commit_duplicate_skip_and_failure_rollback(self):
+  thumb=thumbnail_data(Image.new('RGB',(200,200),'blue'),(0,0,200,200));row={'name':'사진 캠핑장','checkin':'2026-12-01','checkout':'2026-12-03','thumbnail':thumb}
+  response=self.client.post('/api/import/commit',json={'records':[row,row]},headers=self.headers);self.assertEqual(response.status_code,200);self.assertEqual(response.json['skipped'],1)
+  record=self.client.get('/api/state').json['records'][0];self.assertEqual(len(record['photos']),1);self.assertEqual(record['photos'][0]['is_cover'],1)
+  with Image.open(MEDIA/(record['photos'][0]['id']+'.jpg')) as photo:self.assertEqual(photo.size,(200,200));self.assertGreater(photo.getpixel((80,80))[2],200)
+  files=set(MEDIA.iterdir());self.assertEqual(self.client.post('/api/import/commit',json={'records':[row]},headers=self.headers).json['skipped'],1);self.assertEqual(set(MEDIA.iterdir()),files)
+  bad={**row,'name':'실패 캠핑장'}
+  with patch('pathlib.Path.write_bytes',side_effect=OSError('disk failure')),self.assertLogs(app.logger,level='ERROR'):
+   self.assertEqual(self.client.post('/api/import/commit',json={'records':[bad]},headers=self.headers).status_code,500)
+  self.assertEqual(len(self.client.get('/api/state').json['records']),1);self.assertEqual(set(MEDIA.iterdir()),files)
+  self.assertEqual(self.client.post('/api/import/commit',json={'records':[{**bad,'thumbnail':'data:image/jpeg;base64,invalid'}]},headers=self.headers).status_code,400)
+ def test_rating_columns_upgrade_independent_visibility_size_order(self):
+  settings=self.client.get('/api/state').json['settings']
+  for mode in ('desktop','display_mobile'):
+   settings[mode]['order'].remove('rating');settings[mode]['order'].insert(0,'rating')
+  settings['desktop']['visible']['rating']=False;settings['display_mobile']['visible']['rating']=True;settings['desktop']['rating_size']=12;settings['display_mobile']['rating_size']=24;settings['display_mobile']['rating_spacing']=0
+  self.assertEqual(self.client.put('/api/settings',json=settings,headers=self.headers).status_code,200);result=self.client.get('/api/state').json['settings'];self.assertEqual(result['desktop']['order'][0],'rating');self.assertFalse(result['desktop']['visible']['rating']);self.assertEqual(result['display_mobile']['rating_size'],24);self.assertEqual(result['display_mobile']['rating_spacing'],0)
+  settings['desktop']['rating_size']=60;self.assertEqual(self.client.put('/api/settings',json=settings,headers=self.headers).status_code,400)

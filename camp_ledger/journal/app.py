@@ -14,8 +14,8 @@ from . import live_sync
 
 DATA=Path(os.getenv('JOURNAL_DATA','./.local-data'));DATA.mkdir(parents=True,exist_ok=True)
 MEDIA=DATA/'photos';MEDIA.mkdir(exist_ok=True)
-FIELDS=['platform','booking_url','name','location','map_url','site','price','checkin','checkout','nights','photos','layout','notes']
-LABELS=['예약 플랫폼','캠핑장 링크','캠핑장명','위치','지도 링크','사이트명','가격','입실','퇴실','기간','사진','배치도','메모']
+FIELDS=['platform','booking_url','name','location','map_url','site','price','checkin','checkout','nights','photos','layout','notes','rating']
+LABELS=['예약 플랫폼','캠핑장 링크','캠핑장명','위치','지도 링크','사이트명','가격','입실','퇴실','기간','사진','배치도','메모','평가']
 DETAIL_FIELDS=['name','location','platform','booking_url','site','price','stay','map_url','notes','map','photos','layout']
 DEFAULT_PLATFORMS=['홈페이지','캠핏','땡큐캠핑','네이버','캠핑톡']
 DEFAULTS={'platforms':DEFAULT_PLATFORMS,'order':FIELDS,'visible':{k:k!='notes' for k in FIELDS},'desktop':{'widths':{k:140 for k in FIELDS},'font':14,'padding':10},'mobile':{'widths':{k:100 for k in FIELDS},'font':12,'padding':6},'external':{},'picker':'files'}
@@ -34,17 +34,24 @@ with connection() as c:
  if 'is_cover' not in [r['name'] for r in c.execute('PRAGMA table_info(photos)')]:c.execute("ALTER TABLE photos ADD COLUMN is_cover INTEGER NOT NULL DEFAULT 0")
  c.execute('INSERT OR IGNORE INTO settings VALUES(1,?)',(json.dumps(DEFAULTS),))
 def upgrade_columns(settings):
- order=settings.get('order',[])
- if isinstance(order,list) and len(order)==len(FIELDS)-1 and all(isinstance(k,str) for k in order) and set(order)==set(FIELDS)-{'nights'}:
-  settings['order']=[*order[:order.index('checkout')+1],'nights',*order[order.index('checkout')+1:]]
-  settings.setdefault('visible',{}).setdefault('nights',settings['visible'].get('checkout',True))
-  for mode in ('desktop','display_mobile'):
-   widths=settings.setdefault(mode,{}).setdefault('widths',{});widths.setdefault('nights',widths.get('checkout',100))
+ for mode in (None,'desktop','display_mobile'):
+  view=settings if mode is None else settings.get(mode,{})
+  order=view.get('order')
+  if isinstance(order,list) and all(isinstance(k,str) for k in order) and len(order)==len(set(order)) and set(order)<=set(FIELDS) and set(FIELDS)-set(order)<={'nights','rating'}:
+   for key,after in (('nights','checkout'),('rating','name')):
+    if key not in order:order.insert(order.index(after)+1,key)
+  if mode is None:view.setdefault('visible',{}).setdefault('rating',True)
+  else:
+   view.setdefault('widths',{}).setdefault('rating',100)
+   if 'visible' in view:view['visible'].setdefault('rating',True);view['visible'].setdefault('nights',view['visible'].get('checkout',True))
+  if 'nights' in (order or settings.get('order',[])):
+   if mode is None:view.setdefault('visible',{}).setdefault('nights',view['visible'].get('checkout',True))
+   else:view.setdefault('widths',{}).setdefault('nights',view['widths'].get('checkout',100))
  return settings
 def get_settings(c):
  s=upgrade_columns(json.loads(c.execute('SELECT body FROM settings WHERE id=1').fetchone()[0]));s.setdefault('platforms',list(DEFAULT_PLATFORMS));s.setdefault('scroll_top','bottom-right');s['scroll_top']={'left-top':'top-left','right-top':'top-right','left-bottom':'bottom-left','right-bottom':'bottom-right','left-middle':'bottom-left','right-middle':'bottom-right'}.get(s['scroll_top'],s['scroll_top']);s.setdefault('add_position','bottom-right');s.setdefault('add_label','캠핑 기록 추가');s.setdefault('kakao_key','');s.setdefault('detail_order',list(DETAIL_FIELDS));s.setdefault('field_labels',{});s.setdefault('selection_enabled',True);s.setdefault('duplicate_enabled',True);s.setdefault('detail_duplicate_enabled',s['duplicate_enabled']);s.setdefault('click_actions',{'list':{'name':{'copy':False,'map':True},'location':{'copy':False,'map':True}},'detail':{'name':{'copy':True,'map':False},'location':{'copy':True,'map':False}}})
  for mode in ('desktop','display_mobile'):
-  s[mode].setdefault('link_size',20);s[mode].setdefault('order',list(s['order']) if mode=='desktop' else ['name','site','checkin','checkout','nights','location','price','notes','platform','booking_url','map_url','photos','layout']);s[mode].setdefault('visible',dict(s['visible']));s[mode].setdefault('photo_size',38);s[mode].setdefault('row_height',0);s[mode].setdefault('layout_caption',False);s[mode].setdefault('layout_size',56)
+  s[mode].setdefault('link_size',20);s[mode].setdefault('order',list(s['order']) if mode=='desktop' else ['name','site','checkin','checkout','nights','location','price','notes','platform','booking_url','map_url','photos','layout','rating']);s[mode].setdefault('rating_size',16);s[mode].setdefault('rating_spacing',3);s[mode].setdefault('visible',dict(s['visible']));s[mode].setdefault('photo_size',38);s[mode].setdefault('row_height',0);s[mode].setdefault('layout_caption',False);s[mode].setdefault('layout_size',56)
  s.setdefault('floating',{mode:{'addScale':100,'addFont':14,'topScale':100,'topFont':24} for mode in ('pc','mobile')})
  s.setdefault('empty_text',{});s.setdefault('default_sort',{'key':'','direction':'desc'})
  return s
@@ -80,7 +87,7 @@ def checked_rating(value):
  return value
 def clean(raw):
  if not isinstance(raw,dict):raise ValueError('기록 형식이 올바르지 않습니다.')
- b={k:raw.get(k,'') for k in FIELDS if k not in ('photos','layout','nights')}
+ b={k:raw.get(k,'') for k in FIELDS if k not in ('photos','layout','nights','rating')}
  for k,v in b.items():
   if not isinstance(v,(str,int,float)) or len(str(v))>10000:raise ValueError('입력값이 너무 길거나 올바르지 않습니다.')
   if k!='price':b[k]=str(v).strip()
@@ -328,9 +335,10 @@ def remove_photo(pid):
 def import_preview():
  from .reservation_import import image_text,parse_reservations,identity
  file=request.files.get('image')
- text=image_text(file) if file else str((request.get_json(silent=True) or {}).get('text',''))[:50000]
+ result=image_text(file,with_records=True) if file else None
+ text=result['text'] if result is not None else str((request.get_json(silent=True) or {}).get('text',''))[:50000]
  with connection() as c:existing={identity(json.loads(row['body'])) for row in c.execute('SELECT body FROM records')}
- rows=parse_reservations(text)
+ rows=result['records'] if result is not None else parse_reservations(text)
  return jsonify(text=text,records=[{**row,'duplicate':identity(row) in existing} for row in rows])
 @app.post('/api/import/text-preview')
 def import_text_preview():
@@ -342,18 +350,26 @@ def import_text_preview():
  return jsonify(records=[{**row,'duplicate':identity(row) in existing} for row in rows])
 @app.post('/api/import/commit')
 def import_commit():
- from .reservation_import import identity
+ from .reservation_import import identity,decode_thumbnail
  raw=request.get_json(silent=True) or {};rows=raw.get('records')
  if not isinstance(rows,list) or not 1<=len(rows)<=100 or any(not isinstance(row,dict) for row in rows):raise ValueError('추가할 예약은 1~100개로 선택해주세요.')
  bodies=[clean(row) for row in rows]
  if any(not b.get('checkin') or not b.get('checkout') for b in bodies):raise ValueError('사진 가져오기는 입실일과 퇴실일이 필요합니다.')
- added=[];skipped=0
- with connection() as c:
-  c.execute('BEGIN IMMEDIATE');existing={identity(json.loads(row['body'])) for row in c.execute('SELECT body FROM records')}
-  for body in bodies:
-   key=identity(body)
-   if key in existing:skipped+=1;continue
-   ident=uuid.uuid4().hex;c.execute('INSERT INTO records VALUES(?,?)',(ident,json.dumps(body,ensure_ascii=False)));existing.add(key);added.append(ident)
+ thumbnails=[decode_thumbnail(row.get('thumbnail')) for row in rows]
+ added=[];skipped=0;written=[]
+ try:
+  with connection() as c:
+   c.execute('BEGIN IMMEDIATE');existing={identity(json.loads(row['body'])) for row in c.execute('SELECT body FROM records')}
+   for body,thumbnail in zip(bodies,thumbnails):
+    key=identity(body)
+    if key in existing:skipped+=1;continue
+    ident=uuid.uuid4().hex;c.execute('INSERT INTO records VALUES(?,?)',(ident,json.dumps(body,ensure_ascii=False)));existing.add(key);added.append(ident)
+    if thumbnail:
+     pid=uuid.uuid4().hex;path=MEDIA/(pid+'.jpg');written.append(path);path.write_bytes(thumbnail)
+     c.execute('INSERT INTO photos(id,record_id,kind,name,memo,is_cover) VALUES(?,?,?,?,?,1)',(pid,ident,'gallery',body['name']+' 예약 사진.jpg',''))
+ except Exception:
+  for path in written:path.unlink(missing_ok=True)
+  raise
  return jsonify(added=added,skipped=skipped)
 @app.put('/api/settings')
 def settings():
@@ -383,7 +399,11 @@ def settings():
   if type(layout_caption)!=bool:raise ValueError('배치도 문구 표시 설정을 확인해주세요.')
   layout_size=x.get('layout_size',56)
   if type(layout_size)!=int or not 20<=layout_size<=200:raise ValueError('배치도 사진 크기는 20~200px입니다.')
-  display[key]={'layout_size':layout_size,'layout_caption':layout_caption,'row_height':row_height,'font':font,'padding':padding,'widths':widths,'link_size':link_size,'order':mode_order,'visible':mode_visible,'photo_size':photo_size}
+  rating_size=x.get('rating_size',16)
+  if type(rating_size)!=int or not 8<=rating_size<=48:raise ValueError('평가 글자 크기는 8~48px입니다.')
+  rating_spacing=x.get('rating_spacing',3)
+  if type(rating_spacing)!=int or not 0<=rating_spacing<=40:raise ValueError('평가 위아래 여백은 0~40px입니다.')
+  display[key]={'rating_spacing':rating_spacing,'rating_size':rating_size,'layout_size':layout_size,'layout_caption':layout_caption,'row_height':row_height,'font':font,'padding':padding,'widths':widths,'link_size':link_size,'order':mode_order,'visible':mode_visible,'photo_size':photo_size}
  if raw.get('picker') not in ('files','gallery'):raise ValueError('사진 선택 방식을 확인해주세요.')
  with connection() as c:
   c.execute('BEGIN IMMEDIATE');s=get_settings(c);platforms=raw.get('platforms',s['platforms'])
