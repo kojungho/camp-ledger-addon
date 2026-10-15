@@ -77,3 +77,12 @@ class ListPreferencesTest(unittest.TestCase):
    saved=client.get('/api/state').json['settings'];saved=saved if path=='journal' else saved['display'];self.assertEqual(saved[key],target[key])
    for invalid in [{'key':'unknown','direction':'asc'},{'key':field,'direction':'sideways'},None,{'key':field},'name']:
     target[key]=invalid;self.assertEqual(client.put('/api/settings',json=settings,headers=self.h).status_code,400)
+
+ def test_floating_device_preferences(self):
+  for app,is_journal in [(journal,True),(ledger.app,False)]:
+   client=app.test_client();settings=client.get('/api/state').json['settings'];target=settings if is_journal else settings['display'];f=target['floating'];f['mobile'].update(addScale=70,addFont=10,topScale=80,topFont=18);f['pc'].update(addScale=140,addFont=20,topScale=120,topFont=32)
+   self.assertEqual(client.put('/api/settings',json=settings,headers=self.h).status_code,200)
+   saved=client.get('/api/state').json['settings'];saved=saved if is_journal else saved['display'];self.assertEqual(saved['floating'],f)
+   for key,bad in [('addScale',49),('addScale',201),('topScale',True),('addFont',7),('topFont',65)]:
+    old=f['mobile'][key];f['mobile'][key]=bad;self.assertEqual(client.put('/api/settings',json=settings,headers=self.h).status_code,400);f['mobile'][key]=old
+   target['floating']=None;self.assertEqual(client.put('/api/settings',json=settings,headers=self.h).status_code,400)

@@ -46,6 +46,10 @@ def normalize_settings(s):
         if key not in d: d[key]=list(DEFAULT['display'][key]) if isinstance(DEFAULT['display'][key],list) else DEFAULT['display'][key]
     if 'columnOrder' in d:
         d['columnOrder']=[k for k in d['columnOrder'] if k in DISPLAY_LABELS]+[k for k in DISPLAY_LABELS if k not in d['columnOrder']]
+    floating=d.setdefault('floating',{})
+    if not isinstance(floating,dict):raise ValueError('플로팅 버튼 설정을 확인해주세요.')
+    for mode in ('pc','mobile'):
+        floating.setdefault(mode,{'addScale':100,'addFont':14,'topScale':100,'topFont':24})
     d.setdefault('defaultSort',{'key':'','direction':'desc'});d.setdefault('addButtonPosition','bottom-right');d.setdefault('addButtonLabel','물품 추가');d.setdefault('fieldLabels',{});d.setdefault('emptyText',{});d.setdefault('photoSize',42);d.setdefault('selectionEnabled',True);d.setdefault('selectionPcEnabled',d['selectionEnabled']);d.setdefault('selectionMobileEnabled',d['selectionEnabled'])
     mobile=d.setdefault('mobile',{})
     if not isinstance(mobile,dict):raise ValueError('모바일 화면 설정을 확인해주세요.')
@@ -232,6 +236,10 @@ def valid_settings(s):
     for key in ('categories','methods','buyers','purchase_types'):
         if not isinstance(s.get(key),list) or any(not isinstance(x,str) or not x.strip() for x in s[key]) or len(set(s[key]))!=len(s[key]): raise ValueError('목록 값을 확인해주세요.')
     d=s['display']
+    floating=d['floating']
+    if not isinstance(floating,dict) or set(floating)!=set(('pc','mobile')):raise ValueError('플로팅 버튼 화면 설정을 확인해주세요.')
+    for values in floating.values():
+        if not isinstance(values,dict) or set(values)!=set(('addScale','addFont','topScale','topFont')) or any(type(v) is not int or not (50<=v<=200 if k.endswith('Scale') else 8<=v<=64) for k,v in values.items()):raise ValueError('플로팅 크기는 50~200%, 글자·아이콘은 8~64px입니다.')
     sort=d['defaultSort']
     if not isinstance(sort,dict) or set(sort)!=set(('key','direction')) or sort.get('key') not in ['',*DISPLAY_LABELS] or sort.get('direction') not in ('asc','desc'):raise ValueError('기본 정렬 항목과 차순을 확인해주세요.')
     for key,limit in [('fieldLabels',40),('emptyText',100)]:

@@ -90,3 +90,6 @@ Android 1.0.7은 시스템 다크·라이트 모드에 맞춰 상태바·내비�
 
 ## 1.1.17
 기록 default_sort와 장부 display.defaultSort에 key, direction(asc/desc)을 저장합니다. 빈 key는 기존 순서입니다. 최초 접속과 기본 설정 변경 때 적용하며 데이터 동기화는 사용자가 누른 임시 정렬을 유지합니다. 지도 명칭은 예약 정렬과 별도로 가나다순입니다. 설정 행 앞쪽은 저장돼 실제 적용된 이름, 입력칸 placeholder는 기본 이름을 사용합니다.
+
+## 1.1.18
+기록 settings.floating, 장부 settings.display.floating은 pc/mobile 각각 addScale, addFont, topScale, topFont를 저장합니다. 비율은 50~200%, 글자·아이콘은 8~64px입니다. 기본 비율은 100%이며 화면별 설정 탭에서 수정합니다. CSS로 크기를 적용해 여섯 위치 기준점을 유지합니다. 사진이 없는 장부 상품명은 숨겨진 사진 공간을 유지합니다.
