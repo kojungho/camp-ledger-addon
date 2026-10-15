@@ -24,6 +24,10 @@ def partial_fields(text):
  for key,pattern in [('location',r'(?:주소|위치|소재지)\s*[:：]\s*([^\n]+)'),('site',r'(?:사이트명|사이트|구역|자리)\s*[:：]\s*([^\n]+)')]:
   match=re.search(pattern,text)
   if match:row[key]=match.group(1).strip()
+ category_address=next((CATEGORY.split(line,maxsplit=1)[1].strip(' ·ㆍ.,:：') for line in lines if CATEGORY.search(line)),None)
+ if category_address and not row.get('location'):row['location']=category_address
+ platform=re.search(r'(?:예약\s*플랫폼|플랫폼)\s*[:：]\s*([^\n]+)',text)
+ if platform:row['platform']=platform.group(1).strip()
  amount=re.search(r'([\d,]+)\s*원',text)
  if amount:row['price']=int(amount.group(1).replace(',',''))
  full=re.compile(r'(?<!\d)(\d{4}|\d{2})\s*[./-]\s*(\d{1,2})\s*[./-]\s*(\d{1,2})(?!\d)')
@@ -51,19 +55,74 @@ def partial_fields(text):
  row['needs_dates']=not bool(row['checkin'] and row['checkout'])
  return [row] if row['name'] or row.get('site') or row.get('location') or 'price' in row or row['checkin'] else []
 
+def clean_name(value):
+ # These are isolated OCR icon tokens, not fuzzy spelling corrections to names.
+ value=re.sub(r'^\s*(?:[=★☆*]+|[a-z]{1,3}[)\]]?|[니디티트그])\s+(?=[가-힣])','',value.strip())
+ value=re.sub(r'\s{2,}[^가-힣0-9]*[가-힣A-Za-z]{0,2}\s*[:：].*$','',value)
+ value=re.sub(r'\s+국\s*[:：].*$','',value)
+ value=re.sub(r'\s*[★☆*⋮:：;]+.*$','',value)
+ return value.strip(' ·ㆍ.,:：;★☆*')
+
+def clean_site(value):
+ value=re.sub(r'^\s*(?:[A-Za-z]{1,3}[)\]]|[디티트그Ilㅣ])\s+(?=[0-9A-Za-z])','',value)
+ return value.strip(' ·ㆍ.,:：;')
+
+UI_TEXT=re.compile(r'다시\s*예약(?:하기)?|예약\s*(?:내역|상세)|리뷰\s*쓰기|후기\s*작성|로그\s*작성완료|지도\s*보기|재예약|이용완료|방문완료')
+CATEGORY=re.compile(r'캠핑\s*[,，.·ㆍ]?\s*야영장')
+DAY_HEADER=re.compile(r'(\d{1,2})\s*[./월]\s*(\d{1,2})(?:일)?\s*\(?([월화수목금토일])?\)?')
+
+def clean_booking_lines(text):
+ """Remove interface chrome while retaining booking values and unknown prose."""
+ lines=[]
+ for raw in text.splitlines():
+  line=raw.strip()
+  if not line:continue
+  if re.search(r'(?:오전|오후)\s*\d{1,2}\s*:\s*\d{2}.*방문|\d+\s*번째\s*방문',line):continue
+  ui=UI_TEXT.search(line)
+  if ui:
+   prefix=line[:ui.start()].strip(' []()·ㆍ.,:：;?@')
+   if not re.search(r'[가-힣]{2}|\d{2}',prefix):continue
+   line=prefix
+  if not re.search(r'[가-힣]|\d',line):continue
+  lines.append(line)
+ return lines
+
+def _review_block(text):
+ rows=parse_reservations(text)
+ if not rows:
+  rows=parse_reservation_text(text) or partial_fields(text)
+ # Associate extra fields with their own name-delimited block, never another visit.
+ for index,row in enumerate(rows):
+  lines=text.splitlines();begin=next((i for i,line in enumerate(lines) if clean_name(line)==clean_name(row.get('name',''))),0)
+  end=len(lines)
+  if index+1<len(rows):end=next((i for i in range(begin+1,len(lines)) if clean_name(lines[i])==clean_name(rows[index+1].get('name',''))),end)
+  partial=partial_fields('\n'.join(lines[begin:end]))
+  if partial:
+   for key in ('location','price','platform','booking_url','map_url','notes'):
+    if key in partial[0] and not row.get(key):row[key]=partial[0][key]
+  row['name']=clean_name(row.get('name',''));row['site']=clean_site(row.get('site',''))
+  if re.match(r'^0\d\b',row['site']):row['review_warnings']=['사이트 번호의 숫자·영문을 확인하세요.']
+ return rows
+
 def review_records(text):
- rows=parse_reservations(text);partial=partial_fields(text)
- if len(rows)==1 and partial:
-  for key in ('location','price'):
-   if key in partial[0] and not rows[0].get(key):rows[0][key]=partial[0][key]
- return rows or partial
+ lines=clean_booking_lines(text)
+ # A standalone visit date or explicit repeated name label is a record boundary.
+ boundaries=[i for i,line in enumerate(lines) if DAY_HEADER.fullmatch(line) and any(CATEGORY.search(next_line) or re.search(r'캠핑장|캠프|야영장|숙소명\s*[:：]',next_line) for next_line in lines[i+1:i+4])]
+ if len(boundaries)<2:boundaries=[i for i,line in enumerate(lines) if re.match(r'(?:캠핑장명|업체명|숙소명)\s*[:：]',line)]
+ if len(boundaries)>1:
+  rows=[]
+  for n,start in enumerate(boundaries):
+   stop=boundaries[n+1] if n+1<len(boundaries) else len(lines)
+   rows.extend(_review_block('\n'.join(lines[start:stop])))
+  return rows
+ return _review_block('\n'.join(lines))
 
 def parse_timeline(lines):
  """Extract incomplete visit entries without inventing a year or checkout date."""
  result=[];seen=set();date_hint='';visit_day=None
  category=re.compile(r'캠핑\s*[,，.·ㆍ]?\s*야영장')
  for i,line in enumerate(lines):
-  month_day=re.fullmatch(r'(\d{1,2})\s*[./]\s*(\d{1,2})\s*([월화수목금토일])?',line)
+  month_day=DAY_HEADER.fullmatch(line)
   if month_day:
    month,day=map(int,month_day.groups()[:2])
    try:
@@ -74,10 +133,7 @@ def parse_timeline(lines):
    date_hint=f'{month}.{day}'+(' '+month_day.group(3) if month_day.group(3) else '')
   match=category.search(line)
   if not match or i==0:continue
-  name=lines[i-1]
-  name=re.sub(r'^[^\w가-힣]+','',name)
-  name=re.sub(r'^[a-z]{1,3}\s+(?=[가-힣])','',name)
-  name=re.sub(r'\s*[★☆*⋮:;]+.*$','',name).strip()
+  name=clean_name(lines[i-1])
   if not name or re.search(r'방문|예약|리뷰|^\d+[./]\d+',name):continue
   location=line[match.end():].strip(' ·ㆍ.,:：')
   site='';price=None
@@ -86,11 +142,12 @@ def parse_timeline(lines):
    amount=re.search(r'([\d,]+)\s*원',following)
    if amount:
     price=int(amount.group(1).replace(',',''));site=following[:amount.start()].strip(' ·ㆍ.,:：')
-    site=re.sub(r'^(?:디|티|그|[Ilㅣ])\s+(?=[0-9A-Za-z])','',site);break
-  if price is None or not location or not date_hint:continue
+    site=clean_site(site);break
+  if not location or not date_hint:continue
   try:checkin=date(current_year(),*visit_day).isoformat()
   except ValueError:checkin=''
   row={'name':name,'location':location,'site':site,'price':price,'checkin':checkin,'checkout':'','date_hint':date_hint,'needs_dates':True,'year_assumed':True}
+  if price is None:row.pop('price')
   key=(name,date_hint,site)
   if key not in seen:seen.add(key);result.append(row)
  return result

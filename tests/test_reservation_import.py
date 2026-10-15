@@ -86,3 +86,34 @@ class ReservationTest(unittest.TestCase):
   self.assertEqual(self.client.put('/api/settings',json=settings,headers=self.headers).status_code,200);result=self.client.get('/api/state').json['settings'];self.assertEqual(result['desktop']['map_marker_size'],64);self.assertEqual(result['display_mobile']['map_marker_size'],24);self.assertEqual(result['desktop']['map_button_size'],16);self.assertEqual(result['display_mobile']['map_label_size'],10);self.assertEqual(result['desktop']['map_label_gap'],18);self.assertEqual(result['display_mobile']['map_label_gap'],0)
   for key,value in [('map_marker_size',10),('map_label_size',7),('map_button_size',41),('map_label_gap',-1),('map_label_gap',81)]:
    bad=json.loads(json.dumps(settings));bad['desktop'][key]=value;self.assertEqual(self.client.put('/api/settings',json=bad,headers=self.headers).status_code,400)
+
+ def test_noisy_timeline_is_cleaned_without_guessing_site_letters(self):
+  text="""5.23 토
+iy 풍경소리캠핑장                                 국 ：
+캠핑,야영장ㆍ전북 정읍시 산내면
+S) 오전 12:00ㆍ1번째 방문
+트 04 (호수뷰,차박 불가) ㆍ140,000원
+[nu] 다시 예약     Fa 예약 내역     OF 쓰기
+5.3 일
+니 하늘구니 더원                                  국 ：
+캠핑,야영장ㆍ대구 군위군 삼국유사면
+S) 오전 12:00ㆍ1번째 방문
+EF) 3사이트캠핑장.ㆍ175,000원
+[nm] 다시 예약                     ? 리뷰 쓰기
+@ 지도보기 he               소"""
+  response=self.client.post('/api/import/preview',json={'text':text},headers=self.headers)
+  self.assertEqual(response.status_code,200);self.assertEqual(response.json['text'],text)
+  a,b=response.json['records'];self.assertEqual(a['name'],'풍경소리캠핑장');self.assertEqual(b['name'],'하늘구니 더원')
+  self.assertEqual(a['site'],'04 (호수뷰,차박 불가)');self.assertTrue(a['review_warnings']);self.assertEqual(b['site'],'3사이트캠핑장')
+  self.assertEqual((a['price'],b['price']),(140000,175000));self.assertEqual(b['location'],'대구 군위군 삼국유사면')
+  self.assertEqual((a['checkin'],b['checkin']),(f'{current_year()}-05-23',f'{current_year()}-05-03'))
+  self.assertFalse(a['checkout']);self.assertNotIn('thumbnail',a)
+ def test_partial_visit_without_price_is_kept(self):
+  rows=review_records('5.23 토\n풍경소리캠핑장\n캠핑,야영장ㆍ전북 정읍시 산내면\n5.3 일\n하늘구니 더원\n캠핑,야영장ㆍ대구 군위군 삼국유사면')
+  self.assertEqual(len(rows),2);self.assertNotIn('price',rows[0]);self.assertEqual(rows[1]['name'],'하늘구니 더원')
+ def test_repeated_labelled_bookings_do_not_share_values(self):
+  rows=review_records('숙소명: 숲속 쉼터\n방문일: 5.23\n사이트: A-1\n위치: 경기 가평군\n금액: 120,000원\n숙소명: 강가 쉼터\n방문일: 6.2\n사이트: B-2\n위치: 강원 홍천군\n금액: 80,000원')
+  self.assertEqual(len(rows),2);self.assertEqual(rows[1]['name'],'강가 쉼터');self.assertEqual(rows[1]['price'],80000);self.assertEqual(rows[1]['site'],'B-2');self.assertEqual(rows[1]['location'],'강원 홍천군')
+ def test_complete_cards_are_enriched_from_their_own_block(self):
+  rows=review_records('별 캠핑장\n사이트 A-1\n일정 26.05.23-26.05.25\n주소: 경기 가평군\n금액: 120,000원\n달 캠핑장\n사이트 B-2\n일정 26.06.02-26.06.03\n주소: 강원 홍천군\n금액: 80,000원')
+  self.assertEqual(len(rows),2);self.assertEqual(rows[0]['price'],120000);self.assertEqual(rows[1]['price'],80000);self.assertEqual(rows[1]['location'],'강원 홍천군')

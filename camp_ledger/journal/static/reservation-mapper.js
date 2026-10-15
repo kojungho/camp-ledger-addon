@@ -1,17 +1,21 @@
 'use strict';
 (()=>{
  const fields=[['name','캠핑장명'],['location','주소'],['site','사이트명'],['platform','예약 플랫폼'],['price','가격'],['checkin','입실일'],['checkout','퇴실일'],['booking_url','캠핑장 링크'],['map_url','지도 링크'],['notes','메모']];
- const normalize=value=>String(value??'').normalize('NFKC').toLowerCase().replace(/[\s\p{P}\p{S}_]/gu,'');
+ const normalize=value=>String(value??'').normalize('NFKC').toLowerCase().replace(/[\s\p{P}\p{S}_\u119e]/gu,'');
  function unassigned(text,records){
   const known=[];
   for(const record of records)for(const [key] of fields){const value=record[key];if(value==null||value==='')continue;known.push(normalize(value));if(['checkin','checkout'].includes(key)&&/^\d{4}-\d{2}-\d{2}$/.test(value)){const [y,m,d]=value.split('-');known.push(normalize(y.slice(2)+m+d),normalize(Number(m)+'.'+Number(d)),normalize(m+d))}}
   for(const record of records)if(record.date_hint)known.push(normalize(record.date_hint));known.sort((a,b)=>b.length-a.length);
   const labels=['캠핑장명','캠핑장링크','예약플랫폼','사이트명','예약정보','입실일','퇴실일','예약일','결제금액','이용금액','사이트','주소','위치','가격','금액','요금','일정','메모'];
   return String(text||'').split(/\r?\n/).map(line=>line.trim()).filter(line=>{
-   if(!line)return false;let rest=normalize(line);
-   for(const token of known)if(token&&(token.length>=3||rest===token))rest=rest.split(token).join('');
+   if(!line)return false;
+   if(/(?:오전|오후)\s*\d{1,2}\s*:\s*\d{2}.*방문|\d+\s*번째\s*방문/.test(line))return false;
+   if(/다시\s*예약|예약\s*(?:내역|상세)|리뷰\s*쓰기|후기\s*작성|로그\s*작성완료|지도\s*보기|재예약|이용완료|방문완료/.test(line))return false;
+   let rest=normalize(line),matched=false;
+   for(const token of known)if(token&&(token.length>=3||rest===token)){if(rest.includes(token))matched=true;rest=rest.split(token).join('')}
    for(const label of labels)rest=rest.split(normalize(label)).join('');
-   rest=rest.replace(/원$/,'');
+   rest=rest.replace(/캠핑야영장/g,'').replace(/원$/,'');
+   if(matched&&(/^[a-z가-힣]{0,3}$/.test(rest)||!/[가-힣0-9]/.test(rest)))return false;
    if(!rest||/^[월화수목금토일]+$/.test(rest))return false;
    if(['다시예약','다시예약하기','예약내역','예약상세','리뷰쓰기','후기작성','로그작성완료','이용완료','방문완료','재예약'].includes(rest))return false;
    return true;
@@ -35,7 +39,7 @@
  window.unassignedReservationLines=unassigned;window.reservationMappedValue=mappedValue;
  window.mountReservationMapper=({container,text,cards})=>{
   const lines=unassigned(text,cards.map(card=>card.read()));container.replaceChildren();container.className='reservation-unassigned';container.hidden=!lines.length||!cards.length;if(container.hidden)return;
-  const title=document.createElement('h3');title.textContent='항목을 선택할 문구';const hint=document.createElement('p');hint.className='hint';hint.textContent='문구와 넣을 기록·항목을 선택하세요. 적용 전 현재 값과 비교할 수 있습니다.';const list=document.createElement('div'),more=document.createElement('button');more.type='button';container.append(title,hint,list,more);let offset=0;
+  const title=document.createElement('summary');title.textContent='추가로 확인할 문구 ('+lines.length+'개)';const hint=document.createElement('p');hint.className='hint';hint.textContent='자동 입력되지 않은 내용입니다. 필요한 문구만 항목을 골라 적용하세요.';const list=document.createElement('div'),more=document.createElement('button');more.type='button';container.append(title,hint,list,more);let offset=0;
   function lineEditor(line){
    const row=document.createElement('div');row.className='reservation-map-row';const phrase=document.createElement('input');phrase.type='text';phrase.value=line;phrase.setAttribute('aria-label','분류할 문구');
    const record=document.createElement('select');record.setAttribute('aria-label','넣을 기록');const field=document.createElement('select');field.setAttribute('aria-label','넣을 항목');
