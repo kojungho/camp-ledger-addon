@@ -378,4 +378,14 @@ class LedgerTest(unittest.TestCase):
             self.assertEqual(external.get('/api/state',headers=cookie,environ_overrides=owner).status_code,200)
         finally:os.environ.pop('HA_INGRESS',None)
 
+    def test_ledger_uses_the_shared_url_parser_and_ali_input(self):
+        response=self.client.get('/static/shared-link.js')
+        try:
+            self.assertEqual(response.status_code,200);self.assertIn('extractSharedUrl',response.get_data(as_text=True))
+        finally:response.close()
+        response=self.client.get('/?camp_hub=1')
+        try:
+            html=response.get_data(as_text=True);self.assertIn('static/shared-link.js',html);self.assertIn('static/ali-share.js',html);self.assertIn('id="ali-share-text"',html)
+        finally:response.close()
+
 if __name__=='__main__':unittest.main()

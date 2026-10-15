@@ -312,6 +312,8 @@ def headers(r):
 
 @app.get('/')
 def index(): return app.send_static_file('index.html' if request.args.get('camp_hub')=='1' else 'hub.html')
+@app.get('/static/shared-link.js')
+def shared_link_script():return send_file(Path(__file__).parent/'journal/static/shared-link.js',mimetype='application/javascript')
 @app.get('/api/state')
 def state():
     with conn() as c:
