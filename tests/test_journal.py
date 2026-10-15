@@ -112,6 +112,18 @@ class JournalTest(unittest.TestCase):
   upload();first=self.client.get('/api/state').json['records'][0]['photos'][0]['id'];upload();self.client.put('/api/photos/'+first,json={'memo':'다른 기기의 최신 메모'},headers=self.headers)
   raw={'id':ident,'fields':{'name':'내 수정'},'keep':[{'id':first,'memo':'','changed':False}],'uploads':[],'remove':[]};response=self.client.post('/api/records/save',data={'record':json.dumps(raw)},headers=self.headers);self.assertEqual(response.status_code,200);record=self.client.get('/api/state').json['records'][0];self.assertEqual(len(record['photos']),2);self.assertEqual(next(p for p in record['photos'] if p['id']==first)['memo'],'다른 기기의 최신 메모')
   clone={'clone_from':ident,'fields':{'name':'사진 선택 복제'},'keep':[{'id':first,'memo':'복제 메모'}],'uploads':[]};response=self.client.post('/api/records/save',data={'record':json.dumps(clone)},headers=self.headers);self.assertEqual(response.status_code,201);records=self.client.get('/api/state').json['records'];copy=next(r for r in records if r['id']==response.json['id']);self.assertEqual(len(copy['photos']),1);self.assertNotEqual(copy['photos'][0]['id'],first);self.assertEqual(copy['photos'][0]['memo'],'복제 메모')
+ def test_inherited_layout_has_independent_file_and_preserves_source(self):
+  source=self.record(platform='캠핏',booking_url='https://example.com')
+  for kind in ('gallery','layout'):
+   image=io.BytesIO();Image.new('RGB',(10,10),'blue').save(image,'PNG');image.seek(0)
+   self.client.post('/api/records/'+source+'/photos/'+kind,data={'photos':(image,kind+'.png')},headers=self.headers)
+  original=self.client.get('/api/state').json['records'][0];layout=next(p for p in original['photos'] if p['kind']=='layout')
+  raw={'clone_from':source,'fields':{**{k:original[k] for k in ('name','location','platform','booking_url')},'checkin':'2026-11-01','checkout':'2026-11-03'},'keep':[{'id':layout['id'],'memo':'새 메모'}]}
+  result=self.client.post('/api/records/save',data={'record':json.dumps(raw)},headers=self.headers);self.assertEqual(result.status_code,201)
+  records=self.client.get('/api/state').json['records'];copy=next(r for r in records if r['id']==result.json['id']);self.assertEqual(len(copy['photos']),1);photo=copy['photos'][0]
+  self.assertEqual(photo['kind'],'layout');self.assertNotEqual(photo['id'],layout['id']);self.assertEqual((MEDIA/(photo['id']+'.jpg')).read_bytes(),(MEDIA/(layout['id']+'.jpg')).read_bytes())
+  self.client.delete('/api/records/'+copy['id'],headers=self.headers)
+  self.assertEqual(self.client.get('/api/state').json['records'][0],original);self.assertTrue((MEDIA/(layout['id']+'.jpg')).exists())
  def test_editor_rejects_foreign_photo_and_requires_auth(self):
   first=self.record(name='첫 기록');second=self.record(name='두 번째');stream=io.BytesIO();Image.new('RGB',(10,10),'green').save(stream,'PNG');stream.seek(0);self.client.post('/api/records/'+second+'/photos/gallery',data={'photos':(stream,'photo.png')},headers=self.headers);photo=next(r for r in self.client.get('/api/state').json['records'] if r['id']==second)['photos'][0]['id'];raw={'id':first,'fields':{'name':'잘못된 변경'},'keep':[{'id':photo,'memo':''}],'uploads':[]}
   self.assertEqual(self.client.post('/api/records/save',data={'record':json.dumps(raw)},headers=self.headers).status_code,400);self.assertEqual(next(r for r in self.client.get('/api/state').json['records'] if r['id']==first)['name'],'첫 기록');self.assertEqual(self.client.post('/api/records/save',data={'record':json.dumps(raw)}).status_code,403)

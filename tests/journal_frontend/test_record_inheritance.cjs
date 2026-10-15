@@ -1,0 +1,16 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const input=value=>({value,listeners:{},addEventListener(k,fn){(this.listeners[k]??=[]).push(fn)},dispatchEvent(e){for(const fn of this.listeners[e.type]||[])fn(e)}});
+const form=input('');form.elements=Object.fromEntries(['name','location','platform','booking_url'].map(k=>[k,input('')]));
+const newest={id:'new',name:'캠핑장',location:'강원도 1',platform:'캠핏',booking_url:'https://new.test',checkin:'2024-01-01'},older={...newest,id:'old',booking_url:'https://old.test',checkin:'2026-12-01'};
+const window={},inherited=[],state={records:[{...newest,id:'wrong',platform:'네이버'},newest,older]};window.inheritLayoutDraft=r=>inherited.push(r?.id||null);
+const ctx={window,state,document:{querySelector:()=>form},Event:class{constructor(type){this.type=type}},toast(){}};
+vm.runInNewContext(fs.readFileSync('camp_ledger/journal/static/record-inheritance.js','utf8'),ctx);
+const fire=(el,type='change',isTrusted=true)=>el.dispatchEvent({type,isTrusted});
+Object.assign(form.elements.name,{value:' 캠핑장 '});form.elements.location.value='강원도 1';
+window.setupRecordInheritance(true);fire(form,'campsite-selected');assert.equal(inherited.length,0,'Platform must also match');
+form.elements.platform.value='캠핏';fire(form.elements.platform);assert.equal(inherited.at(-1),'new');assert.equal(form.elements.booking_url.value,newest.booking_url,'Registration order wins over stay date');
+form.elements.booking_url.value='https://manual.test';fire(form.elements.booking_url,'input');form.elements.platform.value='네이버';fire(form.elements.platform);assert.equal(form.elements.booking_url.value,'https://manual.test','Do not overwrite manual links');
+form.elements.location.value='다른 주소';fire(form.elements.location,'input');assert.equal(inherited.at(-1),null);
+window.setupRecordInheritance(false);const count=inherited.length;form.elements.location.value='강원도 1';fire(form,'campsite-selected');assert.equal(inherited.length,count,'Edit and duplicate must not inherit');
+window.setupRecordInheritance(true);form.elements.platform.value='캠핏';fire(form.elements.platform);assert.equal(inherited.length,count,'Search confirmation required for each new draft');fire(form,'campsite-selected');assert.equal(inherited.at(-1),'new');
+console.log('Three-field match, latest registration, search/platform order and manual/edit protection passed.');
