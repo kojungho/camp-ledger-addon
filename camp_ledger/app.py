@@ -46,7 +46,7 @@ def normalize_settings(s):
         if key not in d: d[key]=list(DEFAULT['display'][key]) if isinstance(DEFAULT['display'][key],list) else DEFAULT['display'][key]
     if 'columnOrder' in d:
         d['columnOrder']=[k for k in d['columnOrder'] if k in DISPLAY_LABELS]+[k for k in DISPLAY_LABELS if k not in d['columnOrder']]
-    d.setdefault('addButtonPosition','bottom-right');d.setdefault('fieldLabels',{});d.setdefault('emptyText',{});d.setdefault('photoSize',42);d.setdefault('selectionEnabled',True);d.setdefault('selectionPcEnabled',d['selectionEnabled']);d.setdefault('selectionMobileEnabled',d['selectionEnabled'])
+    d.setdefault('addButtonPosition','bottom-right');d.setdefault('addButtonLabel','물품 추가');d.setdefault('fieldLabels',{});d.setdefault('emptyText',{});d.setdefault('photoSize',42);d.setdefault('selectionEnabled',True);d.setdefault('selectionPcEnabled',d['selectionEnabled']);d.setdefault('selectionMobileEnabled',d['selectionEnabled'])
     mobile=d.setdefault('mobile',{})
     if not isinstance(mobile,dict):raise ValueError('모바일 화면 설정을 확인해주세요.')
     for key,value in DEFAULT['display']['mobile'].items():mobile.setdefault(key,{} if key=='columns' else value)
@@ -263,6 +263,7 @@ def valid_settings(s):
         values=d[key]
         if not isinstance(values,list) or any(not isinstance(v,str) or v not in allowed for v in values) or len(set(values))!=len(values): raise ValueError('메인 화면 표시 항목을 확인해주세요.')
     if not d['visibleColumns']: raise ValueError('목록에 표시할 항목을 하나 이상 선택해주세요.')
+    if not isinstance(d['addButtonLabel'],str) or len(d['addButtonLabel'])>40: raise ValueError('추가 버튼 문구는 40자 이하로 입력해주세요.')
     if d['addButtonPosition'] not in ('top-left','top-center','top-right','bottom-left','bottom-center','bottom-right'): raise ValueError('추가 버튼 위치를 확인해주세요.')
     if d['scrollTopPosition'] not in ('top-left','top-center','top-right','bottom-left','bottom-center','bottom-right'): raise ValueError('맨 위로 버튼 위치를 확인해주세요.')
     if d['photoPickerSource'] not in ('gallery','files'): raise ValueError('사진 선택 방식을 확인해주세요.')

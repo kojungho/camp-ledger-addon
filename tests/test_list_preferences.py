@@ -37,6 +37,14 @@ class ListPreferencesTest(unittest.TestCase):
     target[key]=position;self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,200)
     saved=client.get('/api/state').json['settings'];self.assertEqual((saved if key=='add_position' else saved['display'])[key],position)
    target[key]='invalid';self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,400)
+ def test_add_button_labels_and_mobile_layout_caption(self):
+  client=journal.test_client();s=client.get('/api/state').json['settings'];s['add_label']='새 캠핑';s['display_mobile']['layout_caption']=True
+  self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,200);saved=client.get('/api/state').json['settings'];self.assertEqual(saved['add_label'],'새 캠핑');self.assertTrue(saved['display_mobile']['layout_caption'])
+  s['add_label']='x'*41;self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,400)
+  s['add_label']='';self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,200)
+  s['display_mobile']['layout_caption']='yes';self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,400)
+  client=ledger.app.test_client();s=client.get('/api/state').json['settings'];s['display']['addButtonLabel']='장비 등록';self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,200);self.assertEqual(client.get('/api/state').json['settings']['display']['addButtonLabel'],'장비 등록')
+  s['display']['addButtonLabel']=2;self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,400)
  def test_ledger_selection_pc_mobile_independent(self):
   client=ledger.app.test_client();settings=client.get('/api/state').json['settings'];d=settings['display'];d['selectionPcEnabled']=True;d['selectionMobileEnabled']=False
   self.assertEqual(client.put('/api/settings',json=settings,headers=self.h).status_code,200)
