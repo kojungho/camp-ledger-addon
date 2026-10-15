@@ -20,6 +20,15 @@ class ListPreferencesTest(unittest.TestCase):
   for invalid in [19,401,-1,True,'60']:
    s['desktop']['row_height']=invalid;self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,400)
   s['desktop']['row_height']=0;self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,200)
+ def test_journal_scroll_positions_match_ledger(self):
+  client=journal.test_client();s=client.get('/api/state').json['settings']
+  for position in ('top-left','top-center','top-right','bottom-left','bottom-center','bottom-right'):
+   s['scroll_top']=position;self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,200)
+   self.assertEqual(client.get('/api/state').json['settings']['scroll_top'],position)
+  for old,new in [('left-top','top-left'),('right-bottom','bottom-right'),('left-middle','bottom-left')]:
+   s['scroll_top']=old;self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,200)
+   self.assertEqual(client.get('/api/state').json['settings']['scroll_top'],new)
+  s['scroll_top']='invalid';self.assertEqual(client.put('/api/settings',json=s,headers=self.h).status_code,400)
  def test_floating_add_positions(self):
   for module,key in [(journal,'add_position'),(ledger.app,'addButtonPosition')]:
    client=module.test_client();s=client.get('/api/state').json['settings'];target=s if key=='add_position' else s['display']

@@ -41,7 +41,7 @@ def upgrade_columns(settings):
    widths=settings.setdefault(mode,{}).setdefault('widths',{});widths.setdefault('nights',widths.get('checkout',100))
  return settings
 def get_settings(c):
- s=upgrade_columns(json.loads(c.execute('SELECT body FROM settings WHERE id=1').fetchone()[0]));s.setdefault('platforms',list(DEFAULT_PLATFORMS));s.setdefault('scroll_top','right-bottom');s.setdefault('add_position','bottom-right');s.setdefault('kakao_key','');s.setdefault('detail_order',list(DETAIL_FIELDS));s.setdefault('field_labels',{});s.setdefault('selection_enabled',True);s.setdefault('duplicate_enabled',True)
+ s=upgrade_columns(json.loads(c.execute('SELECT body FROM settings WHERE id=1').fetchone()[0]));s.setdefault('platforms',list(DEFAULT_PLATFORMS));s.setdefault('scroll_top','bottom-right');s['scroll_top']={'left-top':'top-left','right-top':'top-right','left-bottom':'bottom-left','right-bottom':'bottom-right','left-middle':'bottom-left','right-middle':'bottom-right'}.get(s['scroll_top'],s['scroll_top']);s.setdefault('add_position','bottom-right');s.setdefault('kakao_key','');s.setdefault('detail_order',list(DETAIL_FIELDS));s.setdefault('field_labels',{});s.setdefault('selection_enabled',True);s.setdefault('duplicate_enabled',True)
  for mode in ('desktop','display_mobile'):
   s[mode].setdefault('link_size',20);s[mode].setdefault('order',list(s['order']) if mode=='desktop' else ['name','site','checkin','checkout','nights','location','price','notes','platform','booking_url','map_url','photos','layout']);s[mode].setdefault('visible',dict(s['visible']));s[mode].setdefault('photo_size',38);s[mode].setdefault('row_height',0)
  s.setdefault('empty_text',{})
@@ -343,7 +343,8 @@ def settings():
   if kakao_key!=s['kakao_key'] and not mobile['admin']():abort(403)
   if not isinstance(kakao_key,str) or (kakao_key and (len(kakao_key)!=32 or any(ch not in '0123456789abcdefABCDEF' for ch in kakao_key))):raise ValueError('카카오 JavaScript 키를 확인해주세요.')
   scroll_top=raw.get('scroll_top',s['scroll_top'])
-  if scroll_top not in [side+'-'+pos for side in ('left','right') for pos in ('top','middle','bottom')]:raise ValueError('맨 위로 버튼 위치를 확인해주세요.')
+  scroll_top={'left-top':'top-left','right-top':'top-right','left-bottom':'bottom-left','right-bottom':'bottom-right','left-middle':'bottom-left','right-middle':'bottom-right'}.get(scroll_top,scroll_top)
+  if scroll_top not in ('top-left','top-center','top-right','bottom-left','bottom-center','bottom-right'):raise ValueError('맨 위로 버튼 위치를 확인해주세요.')
   add_position=raw.get('add_position',s['add_position'])
   if add_position not in ('top-left','top-center','top-right','bottom-left','bottom-center','bottom-right'):raise ValueError('추가 버튼 위치를 확인해주세요.')
   actions={k:raw.get(k,s[k]) for k in ('selection_enabled','duplicate_enabled')}

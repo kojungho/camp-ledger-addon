@@ -41,7 +41,7 @@ class JournalTest(unittest.TestCase):
   settings=self.client.get('/api/state').json['settings']
   for side in ('left','right'):
    for pos in ('top','middle','bottom'):
-    settings['scroll_top']=side+'-'+pos;self.assertEqual(self.client.put('/api/settings',json=settings,headers=self.headers).status_code,200);self.assertEqual(self.client.get('/api/state').json['settings']['scroll_top'],side+'-'+pos)
+    settings['scroll_top']=side+'-'+pos;self.assertEqual(self.client.put('/api/settings',json=settings,headers=self.headers).status_code,200);self.assertEqual(self.client.get('/api/state').json['settings']['scroll_top'],('bottom' if pos=='middle' else pos)+'-'+side)
   settings['scroll_top']='invalid';self.assertEqual(self.client.put('/api/settings',json=settings,headers=self.headers).status_code,400)
  def test_address_position_update_preserves_other_fields(self):
   ident=self.record(notes='유지할 메모',booking_url='https://example.com')
