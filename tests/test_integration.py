@@ -16,10 +16,10 @@ class IntegrationTest(unittest.TestCase):
    path=Path(directory)/'journal.sqlite3'
    with connection() as source:
     source.execute('INSERT INTO records VALUES(?,?)',('visit',json.dumps({'name':'캠핑장','checkin':'2025-01-01','checkout':'2025-01-02'})))
-    source.execute('INSERT INTO photos VALUES(?,?,?,?,?)',('photo','visit','gallery','사진','메모'))
+    source.execute('INSERT INTO photos(id,record_id,kind,name,memo) VALUES(?,?,?,?,?)',('photo','visit','gallery','사진','메모'))
     source.execute('INSERT INTO devices VALUES(?,?,?,?,?)',('device','휴대폰','hash',1,None))
    with connection() as source:
-    target=sqlite3.connect(path);source.backup(target);target.close()
+    target=sqlite3.connect(path);source.backup(target);target.execute('ALTER TABLE photos DROP COLUMN is_cover');target.commit();target.close()
    values={'journal.sqlite3':path.read_bytes(),'photos/photo.jpg':b'image-bytes'}
    manifest={'counts':{'records':1,'photos':1,'devices':1},'sha256':{k:hashlib.sha256(v).hexdigest() for k,v in values.items()}}
    data=io.BytesIO()
@@ -30,7 +30,7 @@ class IntegrationTest(unittest.TestCase):
    return data.getvalue()
  def test_migration_preserves_photos_memos_devices_and_refuses_overwrite(self):
   payload=self.archive();result=self.client.post('/api/integration/import-journal',data={'archive':(io.BytesIO(payload),'journal.zip')},headers=self.headers);self.assertEqual(result.status_code,200,result.json);self.assertEqual(result.json['counts'],{'records':1,'photos':1,'devices':1})
-  with connection() as c:self.assertEqual(c.execute('SELECT memo FROM photos').fetchone()[0],'메모');self.assertEqual(c.execute('SELECT token_hash FROM devices').fetchone()[0],'hash')
+  with connection() as c:self.assertEqual(c.execute('SELECT memo FROM photos').fetchone()[0],'메모');self.assertEqual(c.execute('SELECT is_cover FROM photos').fetchone()[0],0);self.assertEqual(c.execute('SELECT token_hash FROM devices').fetchone()[0],'hash')
   self.assertEqual((MEDIA/'photo.jpg').read_bytes(),b'image-bytes')
   self.assertEqual(self.client.post('/api/integration/import-journal',data={'archive':(io.BytesIO(payload),'journal.zip')},headers=self.headers).status_code,400)
  def test_dispatch_hub_and_admin_isolation(self):

@@ -17,7 +17,7 @@
   applied=record?.id||null;
   if(!linkTouched){form.elements.booking_url.value=record?.booking_url||'';form.elements.booking_url.dispatchEvent(new Event('input'));}
   window.inheritLayoutDraft(record);
-  if(record)toast('최근 등록한 기록의 캠핑장 링크·배치도를 가져왔습니다.');
+  if(record)toast('최근 등록한 기록의 캠핑장 링크·배치도·대표 사진을 가져왔습니다.');
  }
  form.addEventListener('campsite-selected',()=>{searched=true;apply()});
  window.setupRecordInheritance=enabled=>{

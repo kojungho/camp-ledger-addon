@@ -54,6 +54,8 @@ def install_integration(ledger,mobile,connection,get_settings):
      for ident, in source.execute('SELECT id FROM photos'):
       if not re.fullmatch(r'[a-zA-Z0-9_-]+',ident) or not (staging/'photos'/(ident+'.jpg')).is_file():raise ValueError('사진 파일이 누락됐습니다.')
      if counts!=manifest['counts']:raise ValueError('기록 개수가 백업과 다릅니다.')
+     if 'is_cover' not in [r[1] for r in source.execute('PRAGMA table_info(photos)')]:source.execute('ALTER TABLE photos ADD COLUMN is_cover INTEGER NOT NULL DEFAULT 0')
+     source.commit()
     finally:source.close()
     with LOCK:
      with connection() as current:

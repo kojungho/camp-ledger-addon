@@ -31,6 +31,7 @@ def connection():
 with connection() as c:
  c.executescript('CREATE TABLE IF NOT EXISTS records(id TEXT PRIMARY KEY,body TEXT NOT NULL);CREATE TABLE IF NOT EXISTS photos(id TEXT PRIMARY KEY,record_id TEXT NOT NULL REFERENCES records(id) ON DELETE CASCADE,kind TEXT NOT NULL,name TEXT NOT NULL);CREATE TABLE IF NOT EXISTS settings(id INTEGER PRIMARY KEY,body TEXT NOT NULL);')
  if 'memo' not in [r['name'] for r in c.execute('PRAGMA table_info(photos)')]:c.execute("ALTER TABLE photos ADD COLUMN memo TEXT NOT NULL DEFAULT ''")
+ if 'is_cover' not in [r['name'] for r in c.execute('PRAGMA table_info(photos)')]:c.execute("ALTER TABLE photos ADD COLUMN is_cover INTEGER NOT NULL DEFAULT 0")
  c.execute('INSERT OR IGNORE INTO settings VALUES(1,?)',(json.dumps(DEFAULTS),))
 def upgrade_columns(settings):
  order=settings.get('order',[])
@@ -143,7 +144,7 @@ def create():
    if source:
     for photo in c.execute('SELECT * FROM photos WHERE record_id=?',(source,)).fetchall():
      pid=str(uuid.uuid4());path=MEDIA/(pid+'.jpg');staged.append(path);shutil.copyfile(MEDIA/(photo['id']+'.jpg'),path)
-     c.execute('INSERT INTO photos(id,record_id,kind,name,memo) VALUES(?,?,?,?,?)',(pid,ident,photo['kind'],photo['name'],photo['memo']))
+     c.execute('INSERT INTO photos(id,record_id,kind,name,memo,is_cover) VALUES(?,?,?,?,?,?)',(pid,ident,photo['kind'],photo['name'],photo['memo'],photo['is_cover']))
  except Exception:
   for path in staged:path.unlink(missing_ok=True)
   raise
@@ -220,8 +221,8 @@ def save_with_photos():
  for item in uploads:
   text=memo(item);field=item.get('field');kind=item.get('kind')
   if not isinstance(field,str) or field in fields or kind not in ('gallery','layout') or field not in request.files:raise ValueError('첨부 사진을 확인해주세요.')
-  fields.add(field);file=request.files[field];staged.append((str(uuid.uuid4()),kind,Path(file.filename or '사진').name,image_content(file),text))
- target=ident or str(uuid.uuid4());written=[];removed=[]
+  fields.add(field);file=request.files[field];staged.append((str(uuid.uuid4()),kind,Path(file.filename or '사진').name,image_content(file),text,field))
+ target=ident or str(uuid.uuid4());written=[];removed=[];photo_ids={}
  try:
   with connection() as c:
    c.execute('BEGIN IMMEDIATE');owner=ident or source
@@ -229,6 +230,7 @@ def save_with_photos():
    reject_duplicate(c,body,ident)
    existing={p['id']:dict(p) for p in c.execute('SELECT * FROM photos WHERE record_id=?',(owner,))} if owner else {}
    if not set(keep_values)<=set(existing) or not set(remove)<=set(existing) or set(remove)&set(keep_values) or remove and not ident:raise ValueError('현재 기록에 속한 사진만 저장할 수 있습니다.')
+   photo_ids={pid:pid for pid in keep_values}
    if ident:c.execute('UPDATE records SET body=? WHERE id=?',(json.dumps(body,ensure_ascii=False),target))
    else:c.execute('INSERT INTO records VALUES(?,?)',(target,json.dumps(body,ensure_ascii=False)))
    if ident:
@@ -237,11 +239,20 @@ def save_with_photos():
     c.executemany('UPDATE photos SET memo=? WHERE id=?',[(text,pid) for pid,text in keep_values.items() if pid in memo_changed])
    elif source:
     for pid,text in keep_values.items():
-     photo=existing[pid];newid=str(uuid.uuid4());path=MEDIA/(newid+'.jpg');written.append(path);shutil.copyfile(MEDIA/(pid+'.jpg'),path)
+     photo=existing[pid];newid=str(uuid.uuid4());photo_ids[pid]=newid;path=MEDIA/(newid+'.jpg');written.append(path);shutil.copyfile(MEDIA/(pid+'.jpg'),path)
      c.execute('INSERT INTO photos(id,record_id,kind,name,memo) VALUES(?,?,?,?,?)',(newid,target,photo['kind'],photo['name'],text))
-   for pid,kind,name,content,text in staged:
+   for pid,kind,name,content,text,field in staged:
+    photo_ids[field]=pid
     path=MEDIA/(pid+'.jpg');written.append(path);path.write_bytes(content)
     c.execute('INSERT INTO photos(id,record_id,kind,name,memo) VALUES(?,?,?,?,?)',(pid,target,kind,name,text))
+   if 'cover' in raw:
+    cover=raw['cover']
+    if cover is not None and (not isinstance(cover,str) or cover not in photo_ids):raise ValueError('대표 사진을 확인해주세요.')
+    if cover is not None:
+     pid=photo_ids[cover]
+     if not c.execute("SELECT 1 FROM photos WHERE id=? AND record_id=? AND kind='gallery'",(pid,target)).fetchone():raise ValueError('갤러리 사진만 대표로 지정할 수 있습니다.')
+    c.execute('UPDATE photos SET is_cover=0 WHERE record_id=?',(target,))
+    if cover is not None:c.execute('UPDATE photos SET is_cover=1 WHERE id=?',(photo_ids[cover],))
  except Exception:
   for path in written:path.unlink(missing_ok=True)
   raise
@@ -271,6 +282,14 @@ def photo(pid):
  with connection() as c:
   if not c.execute('SELECT 1 FROM photos WHERE id=?',(pid,)).fetchone():abort(404)
  return send_file(MEDIA/(pid+'.jpg'),mimetype='image/jpeg')
+@app.put('/api/records/<ident>/cover')
+def set_cover(ident):
+ raw=request.get_json(silent=True)
+ if not isinstance(raw,dict) or not isinstance(raw.get('photo_id'),str):raise ValueError('대표 사진을 선택해주세요.')
+ with connection() as c:
+  if not c.execute("SELECT 1 FROM photos WHERE id=? AND record_id=? AND kind='gallery'",(raw['photo_id'],ident)).fetchone():raise ValueError('이 기록의 갤러리 사진만 선택할 수 있습니다.')
+  c.execute('UPDATE photos SET is_cover=0 WHERE record_id=?',(ident,));c.execute('UPDATE photos SET is_cover=1 WHERE id=?',(raw['photo_id'],))
+ return jsonify(ok=True)
 @app.put('/api/photos/<pid>')
 def photo_memo(pid):
  raw=request.get_json()

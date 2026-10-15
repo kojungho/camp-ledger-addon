@@ -124,6 +124,27 @@ class JournalTest(unittest.TestCase):
   self.assertEqual(photo['kind'],'layout');self.assertNotEqual(photo['id'],layout['id']);self.assertEqual((MEDIA/(photo['id']+'.jpg')).read_bytes(),(MEDIA/(layout['id']+'.jpg')).read_bytes())
   self.client.delete('/api/records/'+copy['id'],headers=self.headers)
   self.assertEqual(self.client.get('/api/state').json['records'][0],original);self.assertTrue((MEDIA/(layout['id']+'.jpg')).exists())
+ def test_cover_selection_and_inherited_copy(self):
+  source=self.record(platform='캠핏')
+  for kind in ('gallery','gallery','layout'):
+   image=io.BytesIO();Image.new('RGB',(10,10),'green').save(image,'PNG');image.seek(0)
+   self.client.post('/api/records/'+source+'/photos/'+kind,data={'photos':(image,kind+'.png')},headers=self.headers)
+  photos=self.client.get('/api/state').json['records'][0]['photos'];chosen=photos[1]['id']
+  self.assertEqual(self.client.put('/api/records/'+source+'/cover',json={'photo_id':chosen},headers=self.headers).status_code,200)
+  record=self.client.get('/api/state').json['records'][0];self.assertEqual([p['id'] for p in record['photos'] if p['is_cover']],[chosen])
+  self.assertEqual(self.client.put('/api/records/'+source+'/cover',json={'photo_id':photos[2]['id']},headers=self.headers).status_code,400)
+  foreign=self.record(name='다른 캠핑장');self.assertEqual(self.client.put('/api/records/'+foreign+'/cover',json={'photo_id':chosen},headers=self.headers).status_code,400)
+  self.assertEqual(self.client.put('/api/records/'+source+'/cover',json={'photo_id':chosen}).status_code,403)
+  raw={'fields':{'name':record['name'],'location':record['location'],'platform':record['platform'],'checkin':'2026-12-01','checkout':'2026-12-03'},'clone_from':source,'keep':[{'id':chosen,'memo':'대표'},{'id':photos[2]['id']}],'cover':chosen}
+  response=self.client.post('/api/records/save',data={'record':json.dumps(raw)},headers=self.headers);self.assertEqual(response.status_code,201)
+  copy=next(r for r in self.client.get('/api/state').json['records'] if r['id']==response.json['id']);covers=[p for p in copy['photos'] if p['is_cover']];self.assertEqual(len(covers),1);self.assertNotEqual(covers[0]['id'],chosen);self.assertEqual(covers[0]['kind'],'gallery')
+  self.client.delete('/api/records/'+copy['id'],headers=self.headers);self.assertTrue((MEDIA/(chosen+'.jpg')).exists())
+ def test_uploaded_cover_and_invalid_cover_rollback(self):
+  image=io.BytesIO();Image.new('RGB',(10,10),'red').save(image,'PNG');image.seek(0)
+  raw={'fields':{'name':'대표 업로드'},'uploads':[{'field':'pic','kind':'gallery'}],'cover':'pic'}
+  result=self.client.post('/api/records/save',data={'record':json.dumps(raw),'pic':(image,'cover.png')},headers=self.headers);self.assertEqual(result.status_code,201);original=self.client.get('/api/state').json['records'][0];self.assertEqual(original['photos'][0]['is_cover'],1)
+  files=set(MEDIA.iterdir());raw={'id':original['id'],'fields':{'name':'실패'},'keep':[{'id':original['photos'][0]['id']}],'cover':'missing'}
+  self.assertEqual(self.client.post('/api/records/save',data={'record':json.dumps(raw)},headers=self.headers).status_code,400);self.assertEqual(self.client.get('/api/state').json['records'][0],original);self.assertEqual(set(MEDIA.iterdir()),files)
  def test_editor_rejects_foreign_photo_and_requires_auth(self):
   first=self.record(name='첫 기록');second=self.record(name='두 번째');stream=io.BytesIO();Image.new('RGB',(10,10),'green').save(stream,'PNG');stream.seek(0);self.client.post('/api/records/'+second+'/photos/gallery',data={'photos':(stream,'photo.png')},headers=self.headers);photo=next(r for r in self.client.get('/api/state').json['records'] if r['id']==second)['photos'][0]['id'];raw={'id':first,'fields':{'name':'잘못된 변경'},'keep':[{'id':photo,'memo':''}],'uploads':[]}
   self.assertEqual(self.client.post('/api/records/save',data={'record':json.dumps(raw)},headers=self.headers).status_code,400);self.assertEqual(next(r for r in self.client.get('/api/state').json['records'] if r['id']==first)['name'],'첫 기록');self.assertEqual(self.client.post('/api/records/save',data={'record':json.dumps(raw)}).status_code,403)
