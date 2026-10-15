@@ -11,16 +11,17 @@ def parse_reservations(text):
  lines=[re.sub(r'\s+',' ',line).strip() for line in text.splitlines() if line.strip()]
  pattern=re.compile(r'(\d{2,4})\s*[.\-/]\s*(\d{1,2})\s*[.\-/]\s*(\d{1,2})\s*\(?[월화수목금토일]?\)?\s*[~–—-]\s*(\d{2,4})\s*[.\-/]\s*(\d{1,2})\s*[.\-/]\s*(\d{1,2})')
  from datetime import date
- result=[];seen=set()
+ result=[];seen=set();previous_range=-1
  for i,line in enumerate(lines):
   match=pattern.search(line)
   if not match:continue
+  lower=max(0,i-5,previous_range+1);previous_range=i
   values=list(map(int,match.groups()))
   try:
    start=date(values[0]+2000 if values[0]<100 else values[0],*values[1:3]).isoformat();end=date(values[3]+2000 if values[3]<100 else values[3],*values[4:6]).isoformat()
   except ValueError:continue
   if end<start:continue
-  candidates=[(n,lines[n]) for n in range(max(0,i-5),i) if re.search('캠핑|야영장',lines[n]) and not re.search(r'로그|예약번호|결제|이용완료|사이트|선착순|[ㆍ·]\s*\d+\s*명',lines[n])]
+  candidates=[(n,lines[n]) for n in range(lower,i) if re.search('캠핑|야영장',lines[n]) and not re.search(r'로그|예약번호|결제|이용완료|사이트|선착순|[ㆍ·]\s*\d+\s*명',lines[n])]
   if not candidates:continue
   n,name=candidates[-1];name=re.sub(r'^[^\w가-힣]+','',name).strip()
   site=' · '.join(lines[n+1:i]);site=re.sub(r'\s*[·ㆍ]\s*\d+\s*명.*$','',site).strip()
