@@ -17,16 +17,20 @@ import java.net.URL;
 import java.net.InetAddress;
 import java.net.HttpURLConnection;
 import java.util.UUID;
+import java.util.HashSet;
+import java.util.Set;
+import java.security.MessageDigest;
 
 /** Separate unprivileged browser. No account password or cookie is sent to HA. */
 public final class PlatformActivity extends Activity {
- private WebView browser;private TextView status;private Button sync;private String provider,domain,home;private boolean busy=false;
+ private WebView browser;private TextView status;private Button sync;private String provider,domain,home;private boolean busy=false;private Set<String> knownIds=new HashSet<>(),knownHashes=new HashSet<>();
  @Override public void onCreate(Bundle state){
   super.onCreate(state);provider=getIntent().getStringExtra("provider");
   if("camfit".equals(provider)){domain="camfit.co.kr";home="https://camfit.co.kr/";}
   else if("thankq".equals(provider)){domain="thankqcamping.com";home="https://m.thankqcamping.com/";}
   else if("campingtalk".equals(provider)){domain="campingtalk.me";home="https://www.campingtalk.me/member/reservationList";}
   else{finish();return;}
+  try{JSONObject history=new JSONObject(getIntent().getStringExtra("history"));loadKnown(history.optJSONArray("booking_ids"),knownIds);loadKnown(history.optJSONArray("text_hashes"),knownHashes);}catch(Exception unavailable){}
   LinearLayout root=new LinearLayout(this);root.setOrientation(1);root.setBackgroundColor(0xfffafbf7);root.setOnApplyWindowInsetsListener((v,insets)->{root.setPadding(insets.getSystemWindowInsetLeft(),insets.getSystemWindowInsetTop(),insets.getSystemWindowInsetRight(),insets.getSystemWindowInsetBottom());return insets;});
   if(android.os.Build.VERSION.SDK_INT>=30){android.view.WindowInsetsController bars=getWindow().getInsetsController();if(bars!=null)bars.setSystemBarsAppearance(android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS|android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS|android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS);}else getWindow().getDecorView().setSystemUiVisibility(android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
   LinearLayout bar=new LinearLayout(this);Button close=new Button(this);close.setText("닫기");close.setOnClickListener(v->finish());bar.addView(close);Button top=new Button(this);top.setText("플랫폼 홈");top.setOnClickListener(v->browser.loadUrl(home));bar.addView(top);sync=new Button(this);sync.setText("현재 예약 동기화");sync.setOnClickListener(v->capture());bar.addView(sync);root.addView(bar);
@@ -62,9 +66,18 @@ public final class PlatformActivity extends Activity {
   }
   if(raw==null)throw new IOException();BitmapFactory.Options bounds=new BitmapFactory.Options();bounds.inJustDecodeBounds=true;BitmapFactory.decodeByteArray(raw,0,raw.length,bounds);if(bounds.outWidth<=0||bounds.outHeight<=0||(long)bounds.outWidth*bounds.outHeight>25000000)throw new IOException();BitmapFactory.Options options=new BitmapFactory.Options();while(Math.max(bounds.outWidth,bounds.outHeight)/Math.max(1,options.inSampleSize)>1600)options.inSampleSize=Math.max(1,options.inSampleSize)*2;Bitmap image=BitmapFactory.decodeByteArray(raw,0,raw.length,options);if(image==null)throw new IOException();ByteArrayOutputStream out=new ByteArrayOutputStream();image.compress(Bitmap.CompressFormat.JPEG,88,out);image.recycle();if(out.size()>1500000)throw new IOException();return out.toByteArray();
  }
+ private void loadKnown(JSONArray values,Set<String> target)throws JSONException{if(values!=null)for(int i=0;i<values.length();i++){String value=values.getString(i);if(value.length()<=80)target.add(value);}}
+ private String textHash(String text)throws Exception{byte[] hash=MessageDigest.getInstance("SHA-256").digest(text.getBytes("UTF-8"));StringBuilder value=new StringBuilder();for(byte b:hash)value.append(String.format("%02x",b&255));return value.toString();}
+ private boolean alreadySynced(JSONObject card)throws Exception{
+  String text=card.optString("text","");java.util.regex.Matcher id=java.util.regex.Pattern.compile("예약\\s*(?:번호|코드)\\s*[:：#]?\\s*([A-Za-z0-9][A-Za-z0-9_-]{4,79})").matcher(text);
+  // Do not skip a combined page just because its first reservation is known.
+  if(card.optBoolean("single_card",false)&&id.find()){String value=id.group(1);if(!id.find()&&knownIds.contains(value))return true;}
+  return knownHashes.contains(textHash(text));
+ }
  private void prepare(JSONObject payload){
-  try{JSONArray cards=payload.getJSONArray("cards");if(cards.length()>20)throw new IOException();int total=0;long deadline=System.currentTimeMillis()+45000;
-   for(int i=0;i<cards.length();i++){JSONObject card=cards.getJSONObject(i);JSONArray candidates=card.optJSONArray("media"),kept=new JSONArray();if(candidates!=null)for(int j=0;j<Math.min(4,candidates.length())&&System.currentTimeMillis()<deadline;j++)try{JSONObject candidate=candidates.getJSONObject(j);String kind=candidate.getString("kind");if(!"gallery".equals(kind)&&!"layout".equals(kind))continue;byte[] bytes=photo(candidate.getString("url"));if(total+bytes.length>6*1024*1024)continue;total+=bytes.length;kept.put(new JSONObject().put("kind",kind).put("data","data:image/jpeg;base64,"+Base64.encodeToString(bytes,Base64.NO_WRAP)));}catch(Exception unavailable){}card.put("media",kept);}
+  try{JSONArray cards=payload.getJSONArray("cards");if(cards.length()>20)throw new IOException();int total=0,skipped=0;JSONArray fresh=new JSONArray();long deadline=System.currentTimeMillis()+45000;
+   for(int i=0;i<cards.length();i++){JSONObject card=cards.getJSONObject(i);if(alreadySynced(card)){skipped++;continue;}JSONArray candidates=card.optJSONArray("media"),kept=new JSONArray();if(candidates!=null)for(int j=0;j<Math.min(4,candidates.length())&&System.currentTimeMillis()<deadline;j++)try{JSONObject candidate=candidates.getJSONObject(j);String kind=candidate.getString("kind");if(!"gallery".equals(kind)&&!"layout".equals(kind))continue;byte[] bytes=photo(candidate.getString("url"));if(total+bytes.length>6*1024*1024)continue;total+=bytes.length;kept.put(new JSONObject().put("kind",kind).put("data","data:image/jpeg;base64,"+Base64.encodeToString(bytes,Base64.NO_WRAP)));}catch(Exception unavailable){}card.put("media",kept);fresh.put(card);}
+   payload.put("cards",fresh);payload.put("already_synced",skipped);
    if(isFinishing())return;File dir=new File(getCacheDir(),"platform-sync");dir.mkdirs();File[] old=dir.listFiles();if(old!=null)for(File f:old)if(f.isFile()&&System.currentTimeMillis()-f.lastModified()>86400000L)f.delete();File file=new File(dir,UUID.randomUUID().toString()+".json");byte[] content=payload.toString().getBytes("UTF-8");if(content.length>10*1024*1024)throw new IOException();try(OutputStream out=new FileOutputStream(file)){out.write(content);}CookieManager.getInstance().flush();runOnUiThread(()->{setResult(RESULT_OK,new Intent().putExtra("payload",file.getName()));finish();});
   }catch(Exception error){done("사진을 가져오지 못했습니다. 예약 화면에서 다시 시도해주세요.");}
  }

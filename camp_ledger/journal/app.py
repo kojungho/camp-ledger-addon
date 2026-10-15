@@ -30,7 +30,7 @@ def connection():
  except: c.rollback();raise
  finally:c.close()
 with connection() as c:
- c.executescript('CREATE TABLE IF NOT EXISTS records(id TEXT PRIMARY KEY,body TEXT NOT NULL);CREATE TABLE IF NOT EXISTS photos(id TEXT PRIMARY KEY,record_id TEXT NOT NULL REFERENCES records(id) ON DELETE CASCADE,kind TEXT NOT NULL,name TEXT NOT NULL);CREATE TABLE IF NOT EXISTS settings(id INTEGER PRIMARY KEY,body TEXT NOT NULL);')
+ c.executescript('CREATE TABLE IF NOT EXISTS platform_sync_history(provider TEXT NOT NULL,sync_key TEXT NOT NULL,booking_id TEXT NOT NULL,text_hash TEXT NOT NULL,synced_at TEXT NOT NULL,PRIMARY KEY(provider,sync_key));CREATE TABLE IF NOT EXISTS records(id TEXT PRIMARY KEY,body TEXT NOT NULL);CREATE TABLE IF NOT EXISTS photos(id TEXT PRIMARY KEY,record_id TEXT NOT NULL REFERENCES records(id) ON DELETE CASCADE,kind TEXT NOT NULL,name TEXT NOT NULL);CREATE TABLE IF NOT EXISTS settings(id INTEGER PRIMARY KEY,body TEXT NOT NULL);')
  if 'memo' not in [r['name'] for r in c.execute('PRAGMA table_info(photos)')]:c.execute("ALTER TABLE photos ADD COLUMN memo TEXT NOT NULL DEFAULT ''")
  if 'is_cover' not in [r['name'] for r in c.execute('PRAGMA table_info(photos)')]:c.execute("ALTER TABLE photos ADD COLUMN is_cover INTEGER NOT NULL DEFAULT 0")
  c.execute('INSERT OR IGNORE INTO settings VALUES(1,?)',(json.dumps(DEFAULTS),))
@@ -350,11 +350,16 @@ def import_preview():
  with connection() as c:existing={identity(json.loads(row['body'])) for row in c.execute('SELECT body FROM records')}
  rows=result['records'] if result is not None else review_records(text)
  return jsonify(text=text,records=[{**row,'duplicate':bool(row.get('checkin') and row.get('checkout') and identity(row) in existing)} for row in rows])
+@app.get('/api/platforms/state')
+def platform_state():
+ from .platform_sync import sync_state
+ with connection() as c:return jsonify(sync_state(c))
 @app.post('/api/platforms/preview')
 def platform_preview():
  from .platform_sync import preview
- with connection() as c:records=[{**json.loads(r['body']),'id':r['id']} for r in c.execute('SELECT * FROM records')]
- return jsonify(preview(request.get_json(silent=True),records))
+ with connection() as c:
+  records=[{**json.loads(r['body']),'id':r['id']} for r in c.execute('SELECT * FROM records')];history=[dict(r) for r in c.execute('SELECT * FROM platform_sync_history')]
+ return jsonify(preview(request.get_json(silent=True),records,history))
 @app.post('/api/platforms/commit')
 def platform_commit():
  from .platform_sync import commit
@@ -504,7 +509,7 @@ def backup():
   # Serialize only journal data; paired device secrets are excluded.
   records=[dict(r) for r in c.execute('SELECT * FROM records')];photos=[dict(r) for r in c.execute('SELECT * FROM photos')]
   s=get_settings(c);s.pop('mobile',None)
-  z.writestr('journal.json',json.dumps({'records':records,'photos':photos,'settings':s},ensure_ascii=False))
+  z.writestr('journal.json',json.dumps({'records':records,'photos':photos,'settings':s,'platform_sync_history':[dict(r) for r in c.execute('SELECT * FROM platform_sync_history')]},ensure_ascii=False))
   for p in photos:z.write(MEDIA/(p['id']+'.jpg'),'photos/'+p['id']+'.jpg')
  out.seek(0);return send_file(out,as_attachment=True,download_name='캠핑장기록-백업.zip')
 if __name__=='__main__':

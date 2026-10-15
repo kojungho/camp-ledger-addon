@@ -1,5 +1,6 @@
 """Explicit platform imports. Only supplied page text/images are read; no login crawl."""
 import base64,binascii,hashlib,io,json,re,uuid
+from datetime import datetime,timezone
 from PIL import Image,ImageOps,UnidentifiedImageError
 from .reservation_import import review_records,identity
 PROVIDERS={'camfit':'캠핏','thankq':'땡큐캠핑','campingtalk':'캠핑톡'}
@@ -27,21 +28,49 @@ def validate_ref(raw):
  if not isinstance(raw,dict) or raw.get('provider') not in PROVIDERS:raise ValueError('동기화 플랫폼을 확인해주세요.')
  ident=raw.get('booking_id','')
  if not isinstance(ident,str) or ident and not re.fullmatch(r'[A-Za-z0-9_-]{5,80}',ident):raise ValueError('예약 번호를 확인해주세요.')
- return {'provider':raw['provider'],'booking_id':ident}
+ ref={'provider':raw['provider'],'booking_id':ident}
+ for key in ('source_key','text_hash'):
+  value=raw.get(key,'')
+  if not isinstance(value,str) or value and not re.fullmatch(r'[a-f0-9]{64}',value):raise ValueError('동기화 이력을 확인해주세요.')
+  ref[key]=value
+ return ref
+
+def source_key(fields,ref):
+ value=('id',ref['booking_id']) if ref['booking_id'] else ('stay',identity(fields))
+ return hashlib.sha256(json.dumps([ref['provider'],value],ensure_ascii=False).encode()).hexdigest()
+
+def sync_state(c):
+ result={provider:{'booking_ids':set(),'text_hashes':set(),'last_synced':None} for provider in PROVIDERS}
+ for row in c.execute('SELECT provider,booking_id,text_hash,synced_at FROM platform_sync_history'):
+  if row['provider'] not in result:continue
+  state=result[row['provider']]
+  if row['booking_id']:state['booking_ids'].add(row['booking_id'])
+  if row['text_hash']:state['text_hashes'].add(row['text_hash'])
+  state['last_synced']=max(state['last_synced'] or '',row['synced_at'])
+ # Reservations imported before incremental history was introduced also count.
+ for row in c.execute('SELECT body FROM records'):
+  ref=json.loads(row['body']).get('platform_ref',{});state=result.get(ref.get('provider'))
+  if state is not None and ref.get('booking_id'):state['booking_ids'].add(ref['booking_id'])
+ for state in result.values():
+  for key in ('booking_ids','text_hashes'):state[key]=sorted(state[key])
+ return result
+
 def match_record(records,fields,ref):
  if ref['booking_id']:
-  matches=[r for r in records if r.get('platform_ref')==ref]
+  matches=[r for r in records if r.get('platform_ref',{}).get('provider')==ref['provider'] and r.get('platform_ref',{}).get('booking_id')==ref['booking_id']]
   if len(matches)>1:raise ValueError('같은 예약 번호가 여러 기록에 있습니다. 기존 기록을 확인해주세요.')
   if matches:return matches[0]
  matches=[r for r in records if fields.get('checkin') and fields.get('checkout') and identity(r)==identity(fields)]
  if len(matches)>1:raise ValueError('같은 캠핑장·기간의 기록이 여러 개입니다. 기존 기록을 확인해주세요.')
  return matches[0] if matches else None
 
-def preview(raw,records):
+def preview(raw,records,history=()):
  if not isinstance(raw,dict) or raw.get('provider') not in PROVIDERS:raise ValueError('지원하는 플랫폼을 선택해주세요.')
  cards=raw.get('cards',[])
- if not isinstance(cards,list) or not 1<=len(cards)<=20:raise ValueError('예약 화면에서 동기화를 눌러주세요. 한 번에 20건까지 읽습니다.')
- result=[];seen=set();skipped=0
+ if not isinstance(cards,list) or not 0<=len(cards)<=20:raise ValueError('예약 화면에서 동기화를 눌러주세요. 한 번에 20건까지 읽습니다.')
+ result=[];seen=set();skipped=0;already=raw.get('already_synced',0)
+ if type(already) is not int or not 0<=already<=20:raise ValueError('동기화 제외 개수를 확인해주세요.')
+ known={(r['provider'],r['sync_key']) for r in history}
  for card in cards:
   if not isinstance(card,dict) or not isinstance(card.get('text'),str) or len(card['text'])>8000:raise ValueError('예약 화면 내용을 확인해주세요.')
   text=card['text']
@@ -56,16 +85,17 @@ def preview(raw,records):
    key=ref['booking_id'] or str(identity(row))
    if key in seen:continue
    seen.add(key);existing=match_record(records,row,ref)
-   merged={**(existing or {}),**row};merged.pop('id',None);merged.pop('rating',None);merged.pop('photos',None)
-   for field in ('location','site','booking_url','map_url','notes','checkin','checkout'):
-    if not row.get(field) and existing and existing.get(field):merged[field]=existing[field]
-   if existing and row.get('location') and row['location']!=existing.get('location'):merged['lat']=None;merged['lng']=None
-   merged['platform_sync']=ref;merged['sync_existing']=existing['id'] if existing else None;merged['replace_cover']=False
+   complete=bool(row.get('name') and row.get('checkin') and row.get('checkout'))
+   ref['source_key']=source_key(row,ref) if complete or ref['booking_id'] else ''
+   ref['text_hash']=hashlib.sha256(text.encode()).hexdigest() if len(rows)==1 and (complete or ref['booking_id']) else ''
+   if existing or (ref['provider'],ref['source_key']) in known:already+=1;continue
+   merged=dict(row)
+   merged['platform_sync']=ref;merged['sync_existing']=None;merged['replace_cover']=False
    merged['sync_media']=[{'kind':p['kind'],'data':p['data']} for p in photos]
    gallery=next((p for p in photos if p['kind']=='gallery'),None)
    if gallery:merged['thumbnail']=gallery['data']
    merged['duplicate']=False;result.append(merged)
- return {'records':result,'cancelled_skipped':skipped}
+ return {'records':result,'cancelled_skipped':skipped,'already_synced':already}
 
 def commit(raw,connection,clean,reject_duplicate,media_root):
  rows=raw.get('records') if isinstance(raw,dict) else None
@@ -78,17 +108,19 @@ def commit(raw,connection,clean,reject_duplicate,media_root):
   if not fields.get('checkin') or not fields.get('checkout'):raise ValueError('동기화할 예약의 입실일·퇴실일을 선택해주세요.')
   if type(row.get('replace_cover',False)) is not bool:raise ValueError('대표 사진 선택을 확인해주세요.')
   prepared.append((fields,ref,media_list(row.get('sync_media',[])),row.get('replace_cover',False)))
- written=[];added=[];updated=[];photos_added=0
+ written=[];added=[];updated=[];photos_added=0;skipped=0
  try:
   with connection() as c:
    c.execute('BEGIN IMMEDIATE')
    for fields,ref,photos,replace in prepared:
     records=[{**json.loads(r['body']),'id':r['id']} for r in c.execute('SELECT * FROM records')]
-    old=match_record(records,fields,ref);ident=old['id'] if old else uuid.uuid4().hex
-    reject_duplicate(c,fields,ident if old else None)
-    body={**(old or {}),**fields,'platform_ref':ref};body.pop('id',None)
-    if old:c.execute('UPDATE records SET body=? WHERE id=?',(json.dumps(body,ensure_ascii=False),ident));updated.append(ident)
-    else:c.execute('INSERT INTO records VALUES(?,?)',(ident,json.dumps(body,ensure_ascii=False)));added.append(ident)
+    old=match_record(records,fields,ref);key=ref['source_key'] or source_key(fields,ref)
+    if old or c.execute('SELECT 1 FROM platform_sync_history WHERE provider=? AND sync_key=?',(ref['provider'],key)).fetchone():skipped+=1;continue
+    ident=uuid.uuid4().hex
+    reject_duplicate(c,fields,None)
+    body={**fields,'platform_ref':ref}
+    c.execute('INSERT INTO records VALUES(?,?)',(ident,json.dumps(body,ensure_ascii=False)));added.append(ident)
+    c.execute('INSERT INTO platform_sync_history(provider,sync_key,booking_id,text_hash,synced_at) VALUES(?,?,?,?,?)',(ref['provider'],key,ref['booking_id'],ref['text_hash'],datetime.now(timezone.utc).isoformat()))
     current=[dict(p) for p in c.execute('SELECT * FROM photos WHERE record_id=?',(ident,))]
     hashes={}
     for p in current:
@@ -105,4 +137,4 @@ def commit(raw,connection,clean,reject_duplicate,media_root):
  except Exception:
   for path in written:path.unlink(missing_ok=True)
   raise
- return {'added':added,'updated':updated,'photos_added':photos_added}
+ return {'added':added,'updated':updated,'photos_added':photos_added,'skipped':skipped}

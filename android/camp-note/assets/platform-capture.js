@@ -20,7 +20,7 @@
    if(layout&&layouts<3){media.push({kind:'layout',url:src});layouts++;}
    else if(!layout&&!gallery){media.push({kind:'gallery',url:src});gallery=true;}
   }
-  cards.push({text:value,media});if(cards.length>=20)break;
+  cards.push({text:value,media,single_card:true});if(cards.length>=20)break;
  }
  if(!cards.length){
   const value=text(document.body).slice(0,8000);
