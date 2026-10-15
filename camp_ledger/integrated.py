@@ -97,9 +97,11 @@ class SharedAccess:
   connection,settings,path=self.peer;parsed=urlparse(prefs['external_url'])
   with connection() as c:
    s=settings(c);s['mobile']={'enabled':prefs['enabled'],'external_url':urlunparse((parsed.scheme,parsed.netloc,path,'','','')) if parsed.netloc else ''};c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(s,ensure_ascii=False),))
- def cookies(self,response,key):
-  for connection,settings,fallback in (self.own,self.peer):
-   with connection() as c:path=urlparse(settings(c).get('mobile',{}).get('external_url','')).path or fallback
-   response.set_cookie('campsite_device' if fallback=='/campsite-journal/' else 'camp_device',key,max_age=60*60*24*365*5,secure=True,httponly=True,samesite='Strict',path=path)
+ def cookies(self,response,key,peer=False):
+  # HA bridge versions may collapse duplicate Set-Cookie headers. Issue one per hop:
+  # explicit key connects this path; authenticated bootstrap connects the peer path.
+  connection,settings,fallback=self.peer if peer else self.own
+  with connection() as c:path=urlparse(settings(c).get('mobile',{}).get('external_url','')).path or fallback
+  response.set_cookie('campsite_device' if fallback=='/campsite-journal/' else 'camp_device',key,max_age=60*60*24*365*5,secure=True,httponly=True,samesite='Strict',path=path)
   return response
  def apk(self):return Path(__file__).parent/'journal/static/downloads/camp-note.apk'

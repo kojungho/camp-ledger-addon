@@ -109,7 +109,7 @@ def install_mobile(app, connection, get_settings, data_dir):
             prefs=config(c)
             if not prefs['enabled'] or not valid_key(key,c): abort(401,description='연결키가 만료되었거나 해제되었습니다. 애드온에서 다시 연결해주세요.')
         response=jsonify(ok=True)
-        if shared():return shared().cookies(response,key)
+        if shared():return shared().cookies(response,key,peer=not bool(raw.get('key')))
         response.set_cookie(COOKIE,key,max_age=60*60*24*365*5,secure=True,httponly=True,samesite='Strict',path=urlparse(prefs['external_url']).path or '/')
         return response
 

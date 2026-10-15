@@ -17,7 +17,7 @@ class UnifiedAccessTest(unittest.TestCase):
   for path in ['/journal/api/state','/api/state']:self.assertEqual(self.external.get(path,headers=h).status_code,200)
   self.assertEqual(self.external.put('/api/mobile/config',json={'enabled':False,'external_url':''},headers={**h,**self.h}).status_code,403)
   response=self.external.post('/journal/api/mobile/session',json={},headers={**self.h,'Cookie':'campsite_device='+key});self.assertEqual(response.status_code,200)
-  cookies=response.headers.getlist('Set-Cookie');self.assertTrue(any('camp_device=' in c and 'Path=/camp-ledger/' in c for c in cookies));self.assertTrue(any('campsite_device=' in c and 'Path=/campsite-journal/' in c for c in cookies));self.assertTrue(all('Secure' in c and 'HttpOnly' in c and 'SameSite=Strict' in c for c in cookies))
+  cookies=response.headers.getlist('Set-Cookie');self.assertTrue(any('camp_device=' in c and 'Path=/camp-ledger/' in c for c in cookies));self.assertEqual(len(cookies),1);own=self.external.post('/journal/api/mobile/session',json={'key':key},headers=self.h);self.assertTrue(any('campsite_device=' in c and 'Path=/campsite-journal/' in c for c in own.headers.getlist('Set-Cookie')));self.assertTrue(all('Secure' in c and 'HttpOnly' in c and 'SameSite=Strict' in c for c in cookies))
  def test_legacy_ledger_key_can_bootstrap_and_be_revoked_centrally(self):
   old=self.key('');key=old['token'];response=self.external.post('/journal/api/mobile/session',json={},headers={**self.h,'Cookie':'campsite_device='+key});self.assertEqual(response.status_code,200)
   devices=self.admin.get('/journal/api/mobile/status').json['devices'];ident=next(d['id'] for d in devices if d['id'].endswith(old['id']));self.assertTrue(ident.startswith('peer:'))
