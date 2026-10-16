@@ -137,3 +137,4 @@ body>header{border-bottom:0}
 @media(max-width:700px){.camp-card-content .camp-card-title,.camp-card-content .camp-card-address,.camp-card-content .card-extra,.camp-card-content .camp-card-stay{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal;min-width:0}.camp-card-title-row{flex-wrap:nowrap}.camp-card-title-row>.camp-card-title{display:block}.camp-card-content .card-extra a{white-space:nowrap}.camp-card-book{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
 
 @media(max-width:700px){.camp-card-content>.camp-card-rating,.card-layout figcaption{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+@media(max-width:700px){.camp-card-title-row>.camp-card-title{flex:0 1 auto;width:fit-content;max-width:100%;margin-right:auto}.camp-card-content>.camp-card-address{width:fit-content;max-width:100%}}
