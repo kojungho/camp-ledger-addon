@@ -120,7 +120,7 @@ def preview(raw,records,history=()):
  for card in cards:
   if not isinstance(card,dict) or not isinstance(card.get('text'),str) or len(card['text'])>8000:raise ValueError('예약 화면 내용을 확인해주세요.')
   text=card['text']
-  cancelled=card['cancelled'] if type(card.get('cancelled')) is bool else bool(CANCELLED.search(text))
+  cancelled=card.get('cancelled') is True or bool(CANCELLED.search(text))
   rows=review_records(text);fields=captured_fields(card.get('fields'))
   if not rows and fields:rows=[{'name':'','site':'','checkin':'','checkout':'','needs_review':True}]
   if len(rows)==1:rows=[enrich_fields(rows[0],fields)]

@@ -148,3 +148,7 @@ class PlatformSyncTest(unittest.TestCase):
   for provider in PROVIDERS:
    raw=self.capture(provider=provider,text='캠핑장명: 숲 캠핑장\n예약번호: 9191919191\n입실일: 2026.10.01\n퇴실일: 2026.10.03\n예약이 취소될 경우 환불 규정 적용\n예약 취소');raw['cards'][0]['cancelled']=False
    self.assertFalse(self.post('preview',raw).json['records'][0]['cancelled'])
+
+ def test_confirmed_cancellation_cannot_be_cleared_by_collector_metadata(self):
+  raw=self.capture(text='캠핑장명: 숲 캠핑장\n예약번호: 9191919191\n입실일: 2026.10.01\n퇴실일: 2026.10.03\n예약이 취소되었습니다');raw['cards'][0]['cancelled']=False
+  row=self.post('preview',raw).json['records'][0];self.assertTrue(row['cancelled']);self.assertEqual(self.post('commit',{'records':[row]}).status_code,400)
