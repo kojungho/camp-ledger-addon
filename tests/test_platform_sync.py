@@ -23,6 +23,9 @@ class PlatformSyncTest(unittest.TestCase):
   self.assertEqual(len(result['records']),1);row=result['records'][0]
   self.assertTrue(row['cancelled']);self.assertTrue(row['year_assumed']);self.assertEqual(row['checkin'],'2026-07-27');self.assertEqual(row['checkout'],'2026-07-28');self.assertEqual(row['name'],'숲속 캠핑장');self.assertEqual(row['site'],'A-14');self.assertEqual(row['price'],66000)
   self.assertEqual(self.post('commit',{'records':[row]}).status_code,400)
+ def test_missing_checkout_and_duration_stay_blank_for_user_selection(self):
+  result=self.post('preview',self.capture(text='캠핑장명: 별 캠핑장\n예약번호: 9191919191\n입실일: 2026.10.29')).json
+  row=result['records'][0];self.assertEqual(row['checkin'],'2026-10-29');self.assertEqual(row['checkout'],'');self.assertTrue(row['needs_dates'])
  def test_checkpoint_preview_reports_completed_boundary(self):
   raw=self.capture();raw.update(stopped_at_synced=True,already_synced=1,scan_reason='checkpoint',scan_truncated=False)
   result=self.post('preview',raw).json
