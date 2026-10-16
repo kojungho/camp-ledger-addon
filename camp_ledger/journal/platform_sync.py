@@ -109,7 +109,7 @@ def preview(raw,records,history=()):
    if gallery:merged['thumbnail']=gallery['data']
    merged['duplicate']=False;result.append(merged)
  limited=len(result)>MAX_BOOKINGS;result=result[:MAX_BOOKINGS]
- return {'records':result,'cancelled_count':sum(r['cancelled'] for r in result),'already_synced':already,'scan_truncated':limited or raw.get('scan_truncated') is True,'scan_reason':'limit' if limited else raw.get('scan_reason','') if raw.get('scan_reason') in ('limit','time') else ''}
+ return {'records':result,'cancelled_count':sum(r['cancelled'] for r in result),'already_synced':already,'scan_truncated':limited or raw.get('scan_truncated') is True,'stopped_at_synced':raw.get('stopped_at_synced') is True,'scan_reason':'limit' if limited else raw.get('scan_reason','') if raw.get('scan_reason') in ('limit','time','checkpoint') else ''}
 
 def commit(raw,connection,clean,reject_duplicate,media_root):
  rows=raw.get('records') if isinstance(raw,dict) else None

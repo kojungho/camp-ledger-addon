@@ -16,6 +16,17 @@ class PlatformSyncTest(unittest.TestCase):
   with connection() as c:c.execute('DELETE FROM platform_sync_history');c.execute('DELETE FROM platform_accounts');c.execute('DELETE FROM records');c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(DEFAULTS),))
  def capture(self,provider='camfit',text=TEXT,media=None):return {'provider':provider,'cards':[{'text':text,'media':media or []}]}
  def post(self,path,data):return self.client.post('/api/platforms/'+path,json=data,headers=self.headers)
+ def test_camfit_cancelled_detail_short_dates_remains_visible_not_registerable(self):
+  text='캠핑장명: 숲속 캠핑장\n예약번호: 2407123456\n입실일: 07.27(토)\n퇴실일: 07.28(일)\n사이트명: A-14\n주소: 경기 가평군 숲길 15\n총금액: 66,000원\n예약이 취소되었습니다'
+  with patch('journal.reservation_import.current_year',return_value=2026):
+   result=self.post('preview',self.capture(text=text)).json
+  self.assertEqual(len(result['records']),1);row=result['records'][0]
+  self.assertTrue(row['cancelled']);self.assertTrue(row['year_assumed']);self.assertEqual(row['checkin'],'2026-07-27');self.assertEqual(row['checkout'],'2026-07-28');self.assertEqual(row['name'],'숲속 캠핑장');self.assertEqual(row['site'],'A-14');self.assertEqual(row['price'],66000)
+  self.assertEqual(self.post('commit',{'records':[row]}).status_code,400)
+ def test_checkpoint_preview_reports_completed_boundary(self):
+  raw=self.capture();raw.update(stopped_at_synced=True,already_synced=1,scan_reason='checkpoint',scan_truncated=False)
+  result=self.post('preview',raw).json
+  self.assertTrue(result['stopped_at_synced']);self.assertEqual(result['scan_reason'],'checkpoint');self.assertFalse(result['scan_truncated']);self.assertEqual(result['already_synced'],1);self.assertEqual(len(result['records']),1)
  def test_preview_is_read_only_preserves_source_cards_and_skips_only_cancelled_states(self):
   for provider in PROVIDERS:
    result=self.post('preview',self.capture(provider));self.assertEqual(result.status_code,200);row=result.json['records'][0];self.assertEqual(row['name'],'강촌 스칼라 캠프');self.assertEqual(row['platform'],PROVIDERS[provider]);self.assertEqual(row['platform_sync']['booking_id'],'9744403');self.assertEqual(row['checkout'],'2026-10-11')

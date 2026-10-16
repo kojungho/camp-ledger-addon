@@ -58,9 +58,10 @@ public class PlatformActivity extends Activity {
  }
  private void pollScan(String script,int generation,int attempts){
   if(generation!=scanGeneration||isFinishing()||!scanning)return;
-  if(attempts>145){cancelScan();return;}
+  if(attempts>285){cancelScan();return;}
   browser.evaluateJavascript(script,value->{if(generation!=scanGeneration||isFinishing())return;try{
    Object decoded=new JSONTokener(value).nextValue();if(!(decoded instanceof String))throw new IOException();JSONObject payload=new JSONObject((String)decoded);if(payload.has("error")){done(payload.getString("error"));return;}
+   JSONArray batch=payload.optJSONArray("batch");if(batch!=null)for(int i=0;i<batch.length();i++)if(alreadySynced(batch.getJSONObject(i))){pollScan("window.__campNoteReservationScan.stopAtSynced("+i+")",generation,attempts+1);return;}
    if(!payload.optBoolean("done")){status.setText("아래쪽 예약을 읽고 있습니다… "+payload.optInt("count")+"건 · 중지 가능");browser.postDelayed(()->pollScan("window.__campNoteReservationScan?window.__campNoteReservationScan.step():JSON.stringify({error:'페이지가 다시 열렸습니다. 예약 화면이 로드된 뒤 동기화해주세요.'})",generation,attempts+1),700);return;}
    scanning=false;sync.setEnabled(false);sync.setText("사진 읽는 중");status.setText("예약 "+payload.getJSONArray("cards").length()+"건의 사진을 준비하고 있습니다…");payload.put("provider",provider);payload.put("account",account);new Thread(()->prepare(payload),"camp-platform-photos").start();
   }catch(Exception error){done("예약 내용을 읽지 못했습니다. 예약 화면이 열린 상태인지 확인해주세요.");}});
@@ -86,9 +87,9 @@ public class PlatformActivity extends Activity {
   return knownHashes.contains(textHash(text));
  }
  private void prepare(JSONObject payload){
-  try{JSONArray cards=payload.getJSONArray("cards");if(cards.length()>100)throw new IOException();int total=0,skipped=0;JSONArray fresh=new JSONArray();long deadline=System.currentTimeMillis()+45000;
+  try{JSONArray cards=payload.getJSONArray("cards");if(cards.length()>100)throw new IOException();int total=0,skipped=payload.optInt("already_synced",0);JSONArray fresh=new JSONArray();long deadline=System.currentTimeMillis()+45000;
    for(int i=0;i<cards.length();i++){JSONObject card=cards.getJSONObject(i);if(!card.optBoolean("cancelled")&&alreadySynced(card)){skipped++;continue;}JSONArray candidates=card.optJSONArray("media"),kept=new JSONArray();if(!card.optBoolean("cancelled")&&candidates!=null)for(int j=0;j<Math.min(4,candidates.length())&&System.currentTimeMillis()<deadline;j++)try{JSONObject candidate=candidates.getJSONObject(j);String kind=candidate.getString("kind");if(!"gallery".equals(kind)&&!"layout".equals(kind))continue;byte[] bytes=photo(candidate.getString("url"));if(total+bytes.length>4*1024*1024)continue;total+=bytes.length;kept.put(new JSONObject().put("kind",kind).put("data","data:image/jpeg;base64,"+Base64.encodeToString(bytes,Base64.NO_WRAP)));}catch(Exception unavailable){}card.put("media",kept);fresh.put(card);}
-   payload.put("cards",fresh);payload.put("already_synced",skipped);
+   payload.remove("batch");payload.put("cards",fresh);payload.put("already_synced",skipped);
    if(isFinishing())return;File dir=new File(getCacheDir(),"platform-sync");dir.mkdirs();File[] old=dir.listFiles();if(old!=null)for(File f:old)if(f.isFile()&&System.currentTimeMillis()-f.lastModified()>86400000L)f.delete();File file=new File(dir,UUID.randomUUID().toString()+".json");byte[] content=payload.toString().getBytes("UTF-8");if(content.length>10*1024*1024)throw new IOException();try(OutputStream out=new FileOutputStream(file)){out.write(content);}CookieManager.getInstance().flush();runOnUiThread(()->{setResult(RESULT_OK,new Intent().putExtra("payload",file.getName()));finish();});
   }catch(Exception error){done("사진을 가져오지 못했습니다. 예약 화면에서 다시 시도해주세요.");}
  }

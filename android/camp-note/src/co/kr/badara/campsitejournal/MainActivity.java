@@ -66,7 +66,7 @@ public class MainActivity extends Activity {
         @JavascriptInterface public String readReservationClipboard(){
             try{ClipboardManager clipboard=(ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE);if(clipboard==null||!clipboard.hasPrimaryClip())return "";ClipData clip=clipboard.getPrimaryClip();if(clip==null||clip.getItemCount()==0)return "";CharSequence value=clip.getItemAt(0).getText();if(value==null)return "";String text=value.toString();return text.length()>10000?text.substring(0,10000):text;}catch(Exception unavailable){return "";}
         }
-        @JavascriptInterface public int getPlatformSyncVersion(){return 5;}
+        @JavascriptInterface public int getPlatformSyncVersion(){return 6;}
         @JavascriptInterface public void openPlatform(String provider){openPlatformIncremental(provider,"{}");}
         @JavascriptInterface public void openPlatformIncremental(String provider,String history){openPlatformAccount(provider,1,history);}
         @JavascriptInterface public void openPlatformAccount(String provider,int account,String history){
