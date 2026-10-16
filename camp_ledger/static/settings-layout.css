@@ -14,3 +14,5 @@
 @media(max-width:760px){#settings-dialog .modal-body{padding-inline:8px}#settings-dialog .modal-head{padding:10px 12px}#settings-dialog .modal-footer{padding:8px}}
 #settings-dialog{width:650px}#settings-dialog .settings-field-table,#settings-dialog .settings-field-row,#settings-dialog .settings-field-header{min-width:604px}
 #settings-dialog select{width:calc(5em + 30px);flex:none}#settings-dialog .default-sort-settings{display:flex;flex-wrap:wrap;justify-content:flex-start;gap:6px}#settings-dialog .default-sort-settings select{flex:none}#settings-dialog .list-add{gap:6px;justify-content:flex-start}#settings-dialog .list-add input{flex:none}#settings-dialog .list-add button{min-height:26px;padding:3px 8px;font-size:12px}#settings-dialog .chip{padding:4px 6px;font-size:11px}
+
+#settings-dialog #calendar-choice-settings{display:grid;grid-template-columns:repeat(3,max-content);justify-content:start;gap:12px}#settings-dialog #calendar-choice-settings>label{margin:0;min-width:0;white-space:nowrap}
