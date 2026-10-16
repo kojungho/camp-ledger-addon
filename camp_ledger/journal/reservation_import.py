@@ -95,7 +95,7 @@ def clean_booking_lines(text):
  return lines
 
 def _review_block(text):
- rows=parse_reservations(text)
+ rows=partial_fields(text) if re.search(r'(?m)^(?:캠핑장명|업체명|숙소명)\s*[:：]',text) else parse_reservations(text)
  if not rows:
   rows=parse_reservation_text(text) or partial_fields(text)
  # Associate extra fields with their own name-delimited block, never another visit.

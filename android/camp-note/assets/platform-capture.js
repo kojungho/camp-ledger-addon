@@ -1,6 +1,7 @@
 (function(){
  'use strict';
  if(document.querySelector('input[type="password"]'))return JSON.stringify({error:'로그인한 뒤 예약 내역 화면에서 동기화를 눌러주세요.'});
+ if(typeof window!=='undefined'&&window.__campNoteNaverCapture){const naver=window.__campNoteNaverCapture();if(naver?.handled||naver?.cards?.length)return JSON.stringify(naver)}
  const visible=el=>{const r=el.getBoundingClientRect();return r.width>0&&r.height>0};
  const text=el=>(el.innerText||'').trim();
  const dated=value=>/(?:20\d{2}|\d{2})\s*[.\/-]\s*\d{1,2}\s*[.\/-]\s*\d{1,2}|\d{1,2}월\s*\d{1,2}일|(?:^|\n)\s*\d{1,2}[./]\d{1,2}\s*\(?[월화수목금토일]\)?/.test(value);

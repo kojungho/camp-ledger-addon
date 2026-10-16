@@ -26,6 +26,13 @@ class PlatformSyncTest(unittest.TestCase):
  def test_missing_checkout_and_duration_stay_blank_for_user_selection(self):
   result=self.post('preview',self.capture(text='캠핑장명: 별 캠핑장\n예약번호: 9191919191\n입실일: 2026.10.29')).json
   row=result['records'][0];self.assertEqual(row['checkin'],'2026-10-29');self.assertEqual(row['checkout'],'');self.assertTrue(row['needs_dates'])
+ def test_naver_normalized_fields_keep_place_site_and_distinct_dates(self):
+  text='캠핑장명: 풍경소리캠핑장\n예약번호: 1172454330\n사이트명: D4 (호수뷰,차박 불가)\n입실일: 2026. 5. 23(토)\n퇴실일: 2026. 5. 25(월)'
+  row=self.post('preview',self.capture(provider='naver',text=text)).json['records'][0]
+  self.assertEqual(row['name'],'풍경소리캠핑장');self.assertEqual(row['site'],'D4 (호수뷰,차박 불가)');self.assertEqual(row['checkin'],'2026-05-23');self.assertEqual(row['checkout'],'2026-05-25');self.assertEqual(row['platform_sync']['booking_id'],'1172454330')
+  raw=self.capture(provider='naver',text='캠핑장명: 하늘구니\n사이트명: 3사이트 캠핑장\n입실일: 5.3 일');raw['ignored_non_lodging']=True
+  with patch('journal.reservation_import.current_year',return_value=2026):row=self.post('preview',raw).json['records'][0]
+  self.assertEqual(row['name'],'하늘구니');self.assertEqual(row['site'],'3사이트 캠핑장');self.assertEqual(row['checkin'],'2026-05-03');self.assertEqual(row['checkout'],'')
  def test_checkpoint_preview_reports_completed_boundary(self):
   raw=self.capture();raw.update(stopped_at_synced=True,already_synced=1,scan_reason='checkpoint',scan_truncated=False)
   result=self.post('preview',raw).json
