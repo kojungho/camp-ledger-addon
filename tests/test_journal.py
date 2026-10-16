@@ -11,6 +11,14 @@ class JournalTest(unittest.TestCase):
   self.client=app.test_client();self.headers={'X-Camp-Request':'1'}
   with connection() as c:
    c.execute('DELETE FROM records');c.execute('DELETE FROM devices');c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(DEFAULTS),))
+ def test_map_choice_settings_roundtrip_and_validation(self):
+  settings=self.client.get('/api/state').json['settings'];self.assertEqual(settings['map_choice'],{'width':280,'height':240,'font':14})
+  original_calendar=settings['calendar_choice'];settings['map_choice']={'width':180,'height':160,'font':12}
+  self.assertEqual(self.client.put('/api/settings',json=settings,headers=self.headers).status_code,200)
+  saved=self.client.get('/api/state').json['settings'];self.assertEqual(saved['map_choice'],settings['map_choice']);self.assertEqual(saved['calendar_choice'],original_calendar)
+  for key,value in [('width',159),('height',481),('font',9),('font',True),('width','200')]:
+   bad=json.loads(json.dumps(settings));bad['map_choice'][key]=value;self.assertEqual(self.client.put('/api/settings',json=bad,headers=self.headers).status_code,400)
+  self.assertEqual(self.client.get('/api/state').json['settings']['map_choice'],settings['map_choice'])
  def test_calendar_choice_settings_roundtrip_and_invalid_size(self):
   settings=self.client.get('/api/state').json['settings'];self.assertEqual(settings['calendar_choice'],{'width':220,'height':210,'font':14})
   settings['calendar_choice']={'width':180,'height':160,'font':12};self.assertEqual(self.client.put('/api/settings',json=settings,headers=self.headers).status_code,200);self.assertEqual(self.client.get('/api/state').json['settings']['calendar_choice'],settings['calendar_choice'])

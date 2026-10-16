@@ -58,6 +58,7 @@ def get_settings(c):
  s['display_mobile'].setdefault('text_limits',{k:0 for k in MOBILE_TEXT_FIELDS})
  s.setdefault('floating',{mode:{'addScale':100,'addFont':14,'topScale':100,'topFont':24} for mode in ('pc','mobile')})
  s.setdefault('calendar_choice',{'width':220,'height':210,'font':14})
+ s.setdefault('map_choice',{'width':280,'height':240,'font':14})
  s.setdefault('empty_text',{});s.setdefault('default_sort',{'key':'','direction':'desc'})
  return s
 mobile=install_mobile(app,connection,get_settings,DATA)
@@ -529,13 +530,15 @@ def settings():
   if not isinstance(empty_text,dict) or any(k not in FIELDS or k in ('photos','layout') or not isinstance(v,str) or len(v)>100 for k,v in empty_text.items()):raise ValueError('빈 내용 표시는 사진을 제외한 항목에 100자 이하로 입력해주세요.')
   choice=raw.get('calendar_choice',s['calendar_choice'])
   if not isinstance(choice,dict) or set(choice)!=set(('width','height','font')) or any(type(choice[k]) is not int or not lo<=choice[k]<=hi for k,lo,hi in [('width',160,480),('height',120,480),('font',10,24)]):raise ValueError('달력 선택 목록은 너비 160~480px, 높이 120~480px, 글자 10~24px입니다.')
+  map_choice=raw.get('map_choice',s['map_choice'])
+  if not isinstance(map_choice,dict) or set(map_choice)!=set(('width','height','font')) or any(type(map_choice[k]) is not int or not lo<=map_choice[k]<=hi for k,lo,hi in [('width',160,480),('height',120,480),('font',10,24)]):raise ValueError('지도 캠핑장 선택 목록은 너비 160~480px, 높이 120~480px, 글자 10~24px입니다.')
   floating=raw.get('floating',s['floating'])
   if not isinstance(floating,dict) or set(floating)!=set(('pc','mobile')):raise ValueError('플로팅 버튼 화면 설정을 확인해주세요.')
   for values in floating.values():
    if not isinstance(values,dict) or set(values)!=set(('addScale','addFont','topScale','topFont')) or any(type(v) is not int or not (50<=v<=200 if k.endswith('Scale') else 8<=v<=64) for k,v in values.items()):raise ValueError('플로팅 크기는 50~200%, 글자·아이콘은 8~64px입니다.')
   default_sort=raw.get('default_sort',s['default_sort'])
   if not isinstance(default_sort,dict) or set(default_sort)!=set(('key','direction')) or default_sort.get('key') not in ['',*FIELDS] or default_sort.get('direction') not in ('asc','desc'):raise ValueError('기본 정렬 항목과 차순을 확인해주세요.')
-  s.update(calendar_choice=choice,floating=floating,default_sort=default_sort,**actions,add_label=add_label,click_actions=click_actions,add_position=add_position,empty_text=empty_text,field_labels=field_labels,platform_deleted=sorted(deleted),detail_order=detail_order,kakao_key=kakao_key,scroll_top=scroll_top,platforms=merged,order=order,visible=visible,picker=raw['picker'],**display);c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(s,ensure_ascii=False),))
+  s.update(map_choice=map_choice,calendar_choice=choice,floating=floating,default_sort=default_sort,**actions,add_label=add_label,click_actions=click_actions,add_position=add_position,empty_text=empty_text,field_labels=field_labels,platform_deleted=sorted(deleted),detail_order=detail_order,kakao_key=kakao_key,scroll_top=scroll_top,platforms=merged,order=order,visible=visible,picker=raw['picker'],**display);c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(s,ensure_ascii=False),))
  return jsonify(ok=True)
 @app.get('/api/backup')
 def backup():

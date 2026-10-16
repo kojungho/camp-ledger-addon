@@ -1,0 +1,5 @@
+const assert=require('node:assert/strict');const {ordered,filtered,sizes}=require('../../camp_ledger/journal/static/map-choice.js');
+const rows=[{id:'z',name:'하늘 캠핑장',location:'강원 평창'},{id:'c',name:'가람 10',location:'충북'},{id:'b',name:'나무 숲',location:'경기'},{id:'a',name:'가람 2',location:'경남'}];
+assert.deepEqual(ordered(rows).map(r=>r.name),['가람 2','가람 10','나무 숲','하늘 캠핑장']);assert.equal(rows[0].id,'z');assert.deepEqual(filtered(rows,'강원').map(r=>r.id),['z']);assert.deepEqual(filtered(rows,'  가람 ').map(r=>r.id),['a','c']);assert.equal(filtered(rows,'없는 캠핑장').length,0);assert.equal(filtered(rows,'').length,4);assert.deepEqual(sizes(),{width:280,height:240,font:14});assert.deepEqual(sizes({width:999,height:50,font:NaN}),{width:480,height:120,font:14});assert.deepEqual(sizes({width:180,height:160,font:12}),{width:180,height:160,font:12});
+const korean={id:'k',name:'가람 캠핑장'.normalize('NFD')};assert.equal(filtered([korean],'가람').length,1);
+console.log('Map choice: 가나다/numeric sort, name/address search, no mutation, empty search, Korean normalization and bounded sizes passed.');

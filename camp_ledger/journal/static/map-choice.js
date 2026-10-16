@@ -1,0 +1,27 @@
+'use strict';
+(()=>{
+ const text=value=>String(value??'').normalize('NFC'),collator=new Intl.Collator('ko-KR',{numeric:true,sensitivity:'base'});
+ const ordered=rows=>[...rows].sort((a,b)=>collator.compare(text(a.name).trim(),text(b.name).trim())||collator.compare(text(a.location),text(b.location))||text(a.id).localeCompare(text(b.id)));
+ const filtered=(rows,query)=>{const q=text(query).trim().toLocaleLowerCase('ko-KR');return ordered(rows).filter(row=>!q||text([row.name,row.location].join(' ')).toLocaleLowerCase('ko-KR').includes(q))};
+ const sizes=settings=>Object.fromEntries(Object.entries({width:[280,160,480],height:[240,120,480],font:[14,10,24]}).map(([key,[fallback,min,max]])=>{const n=Number(settings?.[key]);return [key,Number.isFinite(n)&&n>0?Math.max(min,Math.min(max,n)):fallback]}));
+ if(typeof module!=='undefined'&&module.exports)module.exports={ordered,filtered,sizes};
+ if(typeof document==='undefined')return;
+ const dialog=document.createElement('dialog');dialog.className='camp-choice-dialog';dialog.setAttribute('aria-label','캠핑장 선택');
+ const head=document.createElement('div');head.className='camp-choice-head';const title=document.createElement('strong');title.textContent='캠핑장 선택';const count=document.createElement('small');count.setAttribute('role','status');const close=document.createElement('button');close.type='button';close.textContent='✕';close.setAttribute('aria-label','캠핑장 목록 닫기');head.append(title,count,close);
+ const search=document.createElement('input');search.type='search';search.className='camp-choice-search';search.placeholder='캠핑장명·주소 검색';search.setAttribute('aria-label','지도 캠핑장 검색');search.autocomplete='off';
+ const list=document.createElement('div');list.className='camp-choice-list';list.setAttribute('role','listbox');list.setAttribute('aria-label','캠핑장 목록');dialog.append(head,search,list);document.body.append(dialog);
+ let rows=[],select=null,anchor=null,selected='';
+ function viewport(){if(window.popupViewportGeometry)return window.popupViewportGeometry();const v=window.visualViewport;return {offsetTop:v?.offsetTop||0,height:v?.height||window.innerHeight||800}}
+ function position(){if(!dialog.open)return;const v=viewport();dialog.style.setProperty('--camp-choice-view-height',v.height+'px');dialog.style.top=(v.offsetTop+Math.max(12,(v.height-dialog.getBoundingClientRect().height)/2))+'px'}
+ function apply(settings){for(const [key,value] of Object.entries(sizes(settings)))dialog.style.setProperty('--camp-choice-'+key,value+'px');position()}
+ function caption(){if(!anchor)return;const row=rows.find(r=>r.id===selected);anchor.textContent=(row?row.name:'캠핑장 선택')+' ▾';anchor.title=row?.name||'캠핑장 목록 열기';anchor.disabled=!rows.length;anchor.setAttribute('aria-label',row?'선택한 캠핑장: '+row.name+'. 목록 열기':'캠핑장 선택 · '+rows.length+'곳')}
+ function paint(){const matches=filtered(rows,search.value);count.textContent=matches.length+'곳';list.replaceChildren();for(const row of matches){const button=document.createElement('button');button.type='button';button.dataset.campsiteId=row.id;button.setAttribute('role','option');button.setAttribute('aria-selected',String(row.id===selected));const name=document.createElement('strong');name.textContent=row.name;button.append(name);if(row.location){const address=document.createElement('small');address.textContent=row.location;button.append(address)}button.onclick=()=>{selected=row.id;caption();dialog.close();select?.(row)};list.append(button)}if(!matches.length){const empty=document.createElement('p');empty.className='hint';empty.textContent='검색 결과가 없습니다.';list.append(empty)}list.scrollTop=0;position()}
+ function open(){if(dialog.open||!rows.length)return;apply(window.mapChoiceSettings);search.value='';paint();dialog.showModal();anchor?.setAttribute('aria-expanded','true');position();requestAnimationFrame(()=>search.focus({preventScroll:true}))}
+ close.onclick=()=>dialog.close();dialog.addEventListener('close',()=>{anchor?.setAttribute('aria-expanded','false');anchor?.focus({preventScroll:true})});
+ dialog.addEventListener('click',event=>{if(event.target!==dialog)return;const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)dialog.close()});
+ search.addEventListener('input',paint);search.addEventListener('keydown',event=>{if(event.key==='ArrowDown'){event.preventDefault();list.querySelector('button')?.focus()}});
+ list.addEventListener('keydown',event=>{if(!['ArrowDown','ArrowUp','Home','End'].includes(event.key))return;const buttons=[...list.querySelectorAll('button')],i=buttons.indexOf(document.activeElement);if(i<0)return;event.preventDefault();const next=event.key==='Home'?0:event.key==='End'?buttons.length-1:Math.max(0,Math.min(buttons.length-1,i+(event.key==='ArrowDown'?1:-1)));buttons[next]?.focus()});
+ window.visualViewport?.addEventListener('resize',position);window.visualViewport?.addEventListener('scroll',position);window.addEventListener('resize',position);
+ window.applyCampMapChoice=apply;
+ window.renderCampMapChoice=(container,records,onSelect)=>{rows=ordered(records);select=onSelect;if(!rows.some(r=>r.id===selected))selected='';anchor=document.createElement('button');anchor.type='button';anchor.className='camp-choice-trigger';anchor.setAttribute('aria-haspopup','dialog');anchor.setAttribute('aria-expanded',String(dialog.open));anchor.onclick=open;caption();container.replaceChildren(anchor);apply(window.mapChoiceSettings);if(dialog.open)paint()};
+})();
