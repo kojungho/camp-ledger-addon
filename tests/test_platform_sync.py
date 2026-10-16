@@ -26,6 +26,13 @@ class PlatformSyncTest(unittest.TestCase):
  def test_missing_checkout_and_duration_stay_blank_for_user_selection(self):
   result=self.post('preview',self.capture(text='캠핑장명: 별 캠핑장\n예약번호: 9191919191\n입실일: 2026.10.29')).json
   row=result['records'][0];self.assertEqual(row['checkin'],'2026-10-29');self.assertEqual(row['checkout'],'');self.assertTrue(row['needs_dates'])
+ def test_all_providers_accept_missing_checkout_with_photos_and_keep_checkpoint(self):
+  for provider in PROVIDERS:
+   raw=self.capture(provider=provider,text='캠핑장명: 별 캠핑장\n예약번호: 9191919191\n입실일: 2026.10.29',media=[{'kind':'gallery','data':photo('blue')}])
+   row=self.post('preview',raw).json['records'][0]
+   result=self.post('commit',{'records':[row]});self.assertEqual(result.status_code,200,provider);self.assertEqual(result.json['photos_added'],1)
+   saved=next(r for r in self.client.get('/api/state').json['records'] if r['id']==result.json['added'][0]);self.assertEqual(saved['checkout'],'');self.assertEqual(saved['checkin'],'2026-10-29')
+   repeated=self.post('preview',raw).json;self.assertEqual(repeated['records'],[]);self.assertEqual(repeated['already_synced'],1)
  def test_naver_normalized_fields_keep_place_site_and_distinct_dates(self):
   text='캠핑장명: 풍경소리캠핑장\n예약번호: 1172454330\n사이트명: D4 (호수뷰,차박 불가)\n입실일: 2026. 5. 23(토)\n퇴실일: 2026. 5. 25(월)'
   row=self.post('preview',self.capture(provider='naver',text=text)).json['records'][0]
@@ -36,7 +43,7 @@ class PlatformSyncTest(unittest.TestCase):
  def test_naver_partial_list_entry_remembers_history_after_user_fills_checkout(self):
   raw=self.capture(provider='naver',text='캠핑장명: 하늘구니\n사이트명: 3사이트 캠핑장\n입실일: 2026.05.03');raw['cards'][0]['single_card']=True
   row=self.post('preview',raw).json['records'][0];self.assertTrue(row['platform_sync']['text_hash']);self.assertEqual(row['checkout'],'')
-  row['checkout']='2026-05-05';self.assertEqual(self.post('commit',{'records':[row]}).status_code,200)
+  self.assertEqual(self.post('commit',{'records':[row]}).status_code,200)
   self.assertEqual(len(self.client.get('/api/platforms/state').json['naver']['text_hashes']),1)
   repeated=self.post('preview',raw).json;self.assertEqual(repeated['records'],[]);self.assertEqual(repeated['already_synced'],1)
  def test_checkpoint_preview_reports_completed_boundary(self):
@@ -67,7 +74,7 @@ class PlatformSyncTest(unittest.TestCase):
  def test_preview_cancel_and_failed_commit_never_mark_booking_as_synced(self):
   rows=self.post('preview',self.capture()).json['records'];self.assertEqual(self.client.get('/api/platforms/state').json['camfit']['booking_ids'],[])
   self.assertEqual(len(self.post('preview',self.capture()).json['records']),1)
-  rows[0]['checkout']='';self.assertEqual(self.post('commit',{'records':rows}).status_code,400);self.assertIsNone(self.client.get('/api/platforms/state').json['camfit']['last_synced'])
+  rows[0]['checkin']='';self.assertEqual(self.post('commit',{'records':rows}).status_code,400);self.assertIsNone(self.client.get('/api/platforms/state').json['camfit']['last_synced'])
  def test_no_number_history_survives_manual_edits_and_deletion(self):
   capture=self.capture(text=TEXT.replace('예약번호: 9744403',''))
   rows=self.post('preview',capture).json['records'];rows[0]['name']='사용자가 보완한 캠핑장';ident=self.post('commit',{'records':rows}).json['added'][0]

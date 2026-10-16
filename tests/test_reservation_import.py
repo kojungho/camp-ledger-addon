@@ -69,7 +69,9 @@ class ReservationTest(unittest.TestCase):
   rows=parse_reservations(text);self.assertEqual(len(rows),2);self.assertEqual(rows[0]['name'],'풍경소리캠핑장');self.assertEqual(rows[1]['name'],'하늘구니 더원');self.assertEqual(rows[0]['price'],140000);self.assertEqual(rows[1]['price'],175000);self.assertEqual(rows[0]['site'],'D4 (호수뷰,차박 불가)');self.assertEqual(rows[1]['location'],'대구 군위군 삼국유사면');self.assertEqual(rows[0]['date_hint'],'5.23 토');self.assertTrue(all(r['needs_dates'] and r['checkin'].startswith(str(current_year())+'-') and not r['checkout'] for r in rows))
   self.client.post('/api/records',json={'name':'풍경소리캠핑장'},headers=self.headers)
   preview=self.client.post('/api/import/preview',json={'text':text},headers=self.headers);self.assertFalse(preview.json['records'][0]['duplicate']);self.assertEqual(len(preview.json['records']),2)
-  self.assertEqual(self.client.post('/api/import/commit',json={'records':rows},headers=self.headers).status_code,400)
+  partial=self.client.post('/api/import/commit',json={'records':rows},headers=self.headers);self.assertEqual(partial.status_code,200);self.assertEqual(len(partial.json['added']),2)
+  self.assertTrue(all(not r['checkout'] for r in self.client.get('/api/state').json['records']))
+  repeated=self.client.post('/api/import/commit',json={'records':rows},headers=self.headers);self.assertEqual(repeated.json['skipped'],2)
   for row,dates in zip(rows,[('2026-05-23','2026-05-25'),('2026-05-03','2026-05-05')]):row.update(checkin=dates[0],checkout=dates[1])
   result=self.client.post('/api/import/commit',json={'records':rows},headers=self.headers);self.assertEqual(result.status_code,200);self.assertEqual(len(result.json['added']),2)
  def test_best_effort_fields_and_current_year_month_day(self):

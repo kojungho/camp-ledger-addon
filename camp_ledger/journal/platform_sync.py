@@ -103,7 +103,7 @@ def enrich_fields(row,fields):
   if fields.get('checkout') and parsed.get('checkout'):merged['checkout']=parsed['checkout']
   if parsed.get('year_assumed'):merged['year_assumed']=True;merged['date_hint']=parsed.get('date_hint','')
  if merged.get('checkin') and merged.get('checkout') and merged['checkout']<merged['checkin']:
-  merged['checkout']='';merged['review_warnings']=[*merged.get('review_warnings',[]),'퇴실일을 확인해 선택해주세요.']
+  merged['checkout']='';merged['review_warnings']=[*merged.get('review_warnings',[]),'퇴실일은 확인되는 경우 선택해주세요.']
  merged['needs_dates']=not bool(merged.get('checkin') and merged.get('checkout'))
  return merged
 
@@ -166,7 +166,7 @@ def commit(raw,connection,clean,reject_duplicate,media_root):
   if row.get('cancelled') is True:raise ValueError('취소된 예약은 등록할 수 없습니다.')
   ref=validate_ref(row.get('platform_sync'));fields=clean({k:v for k,v in row.items() if k!='rating'})
   if fields.get('platform')!=PROVIDERS[ref['provider']]:raise ValueError('연결한 플랫폼과 예약 플랫폼이 다릅니다.')
-  if not fields.get('checkin') or not fields.get('checkout'):raise ValueError('동기화할 예약의 입실일·퇴실일을 선택해주세요.')
+  if not fields.get('checkin'):raise ValueError('동기화할 예약의 입실일을 선택해주세요.')
   if type(row.get('replace_cover',False)) is not bool:raise ValueError('대표 사진 선택을 확인해주세요.')
   prepared.append((fields,ref,media_list(row.get('sync_media',[])),row.get('replace_cover',False)))
  written=[];added=[];updated=[];photos_added=0;skipped=0

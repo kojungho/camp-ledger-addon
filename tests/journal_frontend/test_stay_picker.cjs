@@ -25,3 +25,9 @@ form.elements.checkout.onclick();assert.equal(caption(11),'입실일');assert.eq
 form.elements.checkin.value='2026-10-29';form.elements.checkout.value='2026-11-02';form.elements.checkin.onclick();assert.equal(caption(29),'입실일');elements.get('#nextMonth').onclick();assert.equal(caption(2),'퇴실일');elements.get('#previousMonth').onclick();assert.equal(caption(29),'입실일');elements.get('#closeStay').onclick();
 form.elements.checkin.value='2026-10-15';form.elements.checkout.value='2026-10-15';form.elements.checkout.onclick();assert.equal(caption(15),'입실일\n퇴실일');elements.get('#closeStay').onclick();
 console.log('Calendar day captions identify check-in/out while selecting and after reopening, including month boundaries and same-day stays.');
+
+form.elements.checkin.value='2026-10-10';form.elements.checkout.value='2026-10-13';form.elements.checkin.onclick();day(20).onclick();elements.get('#closeStay').onclick();assert.equal(form.elements.checkout.value,'2026-10-13','Closing cancels pending date edits');
+form.elements.checkin.onclick();day(21).onclick();assert.equal(elements.get('#applyCheckinOnly').hidden,false);elements.get('#applyCheckinOnly').onclick();assert.equal(form.elements.checkin.value,'2026-10-21');assert.equal(form.elements.checkout.value,'');assert.equal(elements.get('#stayPicker').open,false);
+form.elements.checkout.onclick();assert.equal(elements.get('#applyCheckinOnly').hidden,true);day(23).onclick();assert.equal(form.elements.checkout.value,'2026-10-23');
+review.elements.checkin.onclick();day(12).onclick();elements.get('#applyCheckinOnly').onclick();assert.equal(review.elements.checkin.value,'2026-12-12');assert.equal(review.elements.checkout.value,'');assert.equal(form.elements.checkout.value,'2026-10-23');
+console.log('Check-in-only dates save explicitly in manual/review calendars, preserve cancel behavior and allow later checkout.');

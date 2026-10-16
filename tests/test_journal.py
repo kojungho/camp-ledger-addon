@@ -34,6 +34,15 @@ class JournalTest(unittest.TestCase):
  def record(self,**extra):
   data={'name':'테스트 캠핑장','location':'강원도','price':120000,'checkin':'2026-10-01','checkout':'2026-10-03',**extra}
   r=self.client.post('/api/records',json=data,headers=self.headers);self.assertEqual(r.status_code,201);return r.json['id']
+ def test_manual_edit_clone_and_media_save_allow_missing_checkout(self):
+  source=self.record(checkout='');self.assertEqual(self.client.put('/api/records/'+source,json={'name':'퇴실 미정 수정','checkin':'2026-10-01','checkout':''},headers=self.headers).status_code,200)
+  clone=self.client.post('/api/records',json={'name':'복제 기록','checkin':'2026-11-01','checkout':'','clone_from':source},headers=self.headers);self.assertEqual(clone.status_code,201)
+  image=io.BytesIO();Image.new('RGB',(20,20),'blue').save(image,'PNG');image.seek(0)
+  raw={'fields':{'name':'사진과 퇴실 미정','checkin':'2026-12-01','checkout':''},'uploads':[{'field':'photo','kind':'gallery'}]}
+  result=self.client.post('/api/records/save',data={'record':json.dumps(raw),'photo':(image,'photo.png')},headers=self.headers);self.assertEqual(result.status_code,201)
+  records=self.client.get('/api/state').json['records'];self.assertEqual(len(records),3);self.assertTrue(all(not r['checkout'] for r in records));self.assertEqual(len(next(r for r in records if r['id']==result.json['id'])['photos']),1)
+  for row in ({'name':'입실 누락','checkout':'2026-10-02'},{'name':'잘못된 순서','checkin':'2026-10-03','checkout':'2026-10-01'}):
+   self.assertEqual(self.client.post('/api/records',json=row,headers=self.headers).status_code,400);self.assertEqual(self.client.post('/api/import/commit',json={'records':[row]},headers=self.headers).status_code,400)
  def test_persistence_and_date_validation(self):
   ident=self.record();r=self.client.get('/api/state').json['records'][0];self.assertEqual(r['id'],ident);self.assertEqual(r['price'],120000)
   self.assertEqual(self.client.put('/api/records/'+ident,json={'name':'변경','checkin':'2026-10-03','checkout':'2026-10-01'},headers=self.headers).status_code,400)

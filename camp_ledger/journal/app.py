@@ -392,7 +392,7 @@ def import_commit():
  raw=request.get_json(silent=True) or {};rows=raw.get('records')
  if not isinstance(rows,list) or not 1<=len(rows)<=100 or any(not isinstance(row,dict) for row in rows):raise ValueError('추가할 예약은 1~100개로 선택해주세요.')
  bodies=[clean(row) for row in rows]
- if any(not b.get('checkin') or not b.get('checkout') for b in bodies):raise ValueError('사진 가져오기는 입실일과 퇴실일이 필요합니다.')
+ if any(not b.get('checkin') for b in bodies):raise ValueError('가져올 기록의 입실일을 입력해주세요.')
  thumbnails=[decode_thumbnail(row.get('thumbnail')) for row in rows]
  added=[];skipped=0;written=[]
  try:

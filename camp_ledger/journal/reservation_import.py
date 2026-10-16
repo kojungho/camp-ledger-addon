@@ -114,7 +114,7 @@ def parse_visit_receipt(text,date_text=None):
  for line in header[start+1:]:
   address=re.search(r'(?:강원(?:특별자치도|도)?|경기(?:도)?|충청[남북]도|충[남북]|전라[남북]도|전북특별자치도|전[남북]|경상[남북]도|경[남북]|제주(?:특별자치도|도)?|서울(?:특별시)?|부산(?:광역시)?|대구(?:광역시)?|인천(?:광역시)?|광주(?:광역시)?|대전(?:광역시)?|울산(?:광역시)?|세종(?:특별자치시)?)\s*(?:[가-힣0-9.-]+(?:시|군|구|읍|면|동|리|로|길)\s*)+',line)
   if address:row['location']=address.group().strip();break
- row['review_warnings']=['방문일을 입실일로 넣었습니다. 퇴실일을 확인해 선택해주세요.' if row.get('checkin') else '방문일을 읽지 못했습니다. 날짜를 확인해주세요.']
+ row['review_warnings']=['방문일을 입실일로 넣었습니다. 퇴실일은 확인되는 경우 선택해주세요.' if row.get('checkin') else '방문일을 읽지 못했습니다. 날짜를 확인해주세요.']
  return [row] if name or row['site'] or row.get('price') is not None else []
 
 def _review_block(text):
