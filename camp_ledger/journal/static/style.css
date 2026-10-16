@@ -138,3 +138,7 @@ body>header{border-bottom:0}
 
 @media(max-width:700px){.camp-card-content>.camp-card-rating,.card-layout figcaption{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
 @media(max-width:700px){.camp-card-title-row>.camp-card-title{flex:0 1 auto;width:fit-content;max-width:100%;margin-right:auto}.camp-card-content>.camp-card-address{width:fit-content;max-width:100%}}
+
+@media(max-width:700px){.camp-card-main.has-main-photo{grid-template-columns:var(--camp-card-photo-width,88px) minmax(0,1fr)}.camp-card-main.has-main-photo>.camp-card-media{width:var(--camp-card-photo-width,88px)}}
+
+@media(max-width:700px){.camp-card-book{box-sizing:border-box;display:flex;align-items:center;justify-content:center;height:var(--camp-booking-height,auto)}}

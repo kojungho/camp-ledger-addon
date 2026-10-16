@@ -470,6 +470,14 @@ def settings():
     if prop not in ('font','spacing','padding') or value is not None and (type(value)!=int or not (8 if prop=='font' else 0)<=value<=(60 if prop!='spacing' else 40)):raise ValueError('항목별 글자·여백 범위를 확인해주세요.')
   display[key]={'map_label_box':box,**map_display,'rating_spacing':rating_spacing,'rating_size':rating_size,'layout_size':layout_size,'layout_caption':layout_caption,'row_height':row_height,'font':font,'padding':padding,'widths':widths,'link_size':link_size,'order':mode_order,'visible':mode_visible,'photo_size':photo_size}
   if field_styles:display[key]['field_styles']=field_styles
+  if key=='display_mobile' and 'main_photo_size' in x:
+   size=x['main_photo_size']
+   if type(size)!=int or not 20<=size<=200:raise ValueError('모바일 대표 사진 너비는 20~200px입니다.')
+   display[key]['main_photo_size']=size
+  if key=='display_mobile' and 'booking_button_height' in x:
+   height=x['booking_button_height']
+   if type(height)!=int or not (height==0 or 20<=height<=160):raise ValueError('예약 버튼 높이는 자동(0) 또는 20~160px입니다.')
+   display[key]['booking_button_height']=height
  limits=raw.get('display_mobile',{}).get('text_limits',{})
  if not isinstance(limits,dict) or any(k not in MOBILE_TEXT_FIELDS or type(v)!=int or not 0<=v<=500 for k,v in limits.items()):raise ValueError('모바일 최대 표시 글자 수는 항목별 0~500자로 설정해주세요.')
  display['display_mobile']['text_limits']={k:limits.get(k,0) for k in MOBILE_TEXT_FIELDS}

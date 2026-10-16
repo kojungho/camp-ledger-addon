@@ -22,6 +22,15 @@ class JournalTest(unittest.TestCase):
   saved=self.client.get('/api/state').json['settings'];self.assertEqual(saved['desktop']['field_styles'],settings['desktop']['field_styles']);self.assertEqual(saved['display_mobile']['field_styles'],settings['display_mobile']['field_styles'])
   for value in (-1,61,True,'18'):
    bad=json.loads(json.dumps(settings));bad['desktop']['field_styles']['name']['font']=value;self.assertEqual(self.client.put('/api/settings',json=bad,headers=self.headers).status_code,400)
+ def test_mobile_photo_and_booking_button_sizes(self):
+  settings=self.client.get('/api/state').json['settings'];self.assertNotIn('main_photo_size',settings['display_mobile'])
+  mobile=settings['display_mobile'];mobile['main_photo_size']=120;mobile['booking_button_height']=48;mobile['field_styles']={'booking_url':{'font':18,'spacing':0}}
+  self.assertEqual(self.client.put('/api/settings',json=settings,headers=self.headers).status_code,200)
+  saved=self.client.get('/api/state').json['settings']['display_mobile'];self.assertEqual(saved['main_photo_size'],120);self.assertEqual(saved['booking_button_height'],48);self.assertEqual(saved['field_styles']['booking_url'],mobile['field_styles']['booking_url'])
+  for key,values in [('main_photo_size',(19,201,True)),('booking_button_height',(1,19,161,True))]:
+   for value in values:
+    bad=json.loads(json.dumps(settings));bad['display_mobile'][key]=value;self.assertEqual(self.client.put('/api/settings',json=bad,headers=self.headers).status_code,400)
+  mobile['booking_button_height']=0;self.assertEqual(self.client.put('/api/settings',json=settings,headers=self.headers).status_code,200)
  def record(self,**extra):
   data={'name':'테스트 캠핑장','location':'강원도','price':120000,'checkin':'2026-10-01','checkout':'2026-10-03',**extra}
   r=self.client.post('/api/records',json=data,headers=self.headers);self.assertEqual(r.status_code,201);return r.json['id']
