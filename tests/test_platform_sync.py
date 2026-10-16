@@ -13,14 +13,14 @@ def photo(color):
 class PlatformSyncTest(unittest.TestCase):
  def setUp(self):
   self.client=app.test_client();self.headers={'X-Camp-Request':'1'}
-  with connection() as c:c.execute('DELETE FROM platform_sync_history');c.execute('DELETE FROM records');c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(DEFAULTS),))
+  with connection() as c:c.execute('DELETE FROM platform_sync_history');c.execute('DELETE FROM platform_accounts');c.execute('DELETE FROM records');c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(DEFAULTS),))
  def capture(self,provider='camfit',text=TEXT,media=None):return {'provider':provider,'cards':[{'text':text,'media':media or []}]}
  def post(self,path,data):return self.client.post('/api/platforms/'+path,json=data,headers=self.headers)
  def test_preview_is_read_only_preserves_source_cards_and_skips_only_cancelled_states(self):
   for provider in PROVIDERS:
    result=self.post('preview',self.capture(provider));self.assertEqual(result.status_code,200);row=result.json['records'][0];self.assertEqual(row['name'],'강촌 스칼라 캠프');self.assertEqual(row['platform'],PROVIDERS[provider]);self.assertEqual(row['platform_sync']['booking_id'],'9744403');self.assertEqual(row['checkout'],'2026-10-11')
   self.assertEqual(self.client.get('/api/state').json['records'],[])
-  self.assertEqual(self.post('preview',self.capture(text=TEXT+'\n취소 완료')).json['cancelled_skipped'],1)
+  cancelled=self.post('preview',self.capture(text=TEXT+'\n취소 완료')).json;self.assertEqual(cancelled['cancelled_count'],1);self.assertTrue(cancelled['records'][0]['cancelled']);self.assertEqual(self.post('commit',{'records':cancelled['records']}).status_code,400)
   self.assertEqual(self.post('preview',self.capture(provider='unknown')).status_code,400)
   self.assertEqual(self.client.post('/api/platforms/commit',json={'records':[]}).status_code,403)
  def test_successful_sync_is_incremental_and_keeps_existing_data_untouched(self):
@@ -66,3 +66,29 @@ class PlatformSyncTest(unittest.TestCase):
  def test_ambiguous_combined_page_never_assigns_a_photo_to_multiple_bookings(self):
   text='별 캠핑장\nA-1\n26.10.01-26.10.03\n달 캠핑장\nB-1\n26.10.04-26.10.05'
   rows=self.post('preview',self.capture(text=text,media=[{'kind':'gallery','data':photo('blue')}])).json['records'];self.assertEqual(len(rows),2);self.assertTrue(all(not r['sync_media'] for r in rows))
+
+ def test_mixed_cancelled_bookings_remain_visible_but_cannot_be_committed(self):
+  capture={'provider':'camfit','cards':[{'text':TEXT,'media':[]},{'text':TEXT.replace('9744403','9999999')+'\n취소 완료','media':[]}]}
+  result=self.post('preview',capture).json;self.assertEqual(len(result['records']),2);self.assertEqual(result['cancelled_count'],1)
+  self.assertEqual(self.post('commit',{'records':result['records']}).status_code,400);self.assertEqual(self.client.get('/api/state').json['records'],[])
+  self.assertEqual(len(self.post('commit',{'records':[result['records'][0]]}).json['added']),1)
+  again=self.post('preview',capture).json;self.assertEqual(len(again['records']),1);self.assertTrue(again['records'][0]['cancelled']);self.assertEqual(again['already_synced'],1)
+  flagged=self.capture(text=TEXT.replace('9744403','8888888'));flagged['cards'][0]['cancelled']=True
+  self.assertTrue(self.post('preview',flagged).json['records'][0]['cancelled'])
+ def test_scan_range_limit_is_reported_and_empty_cancelled_cards_are_visible(self):
+  raw=self.capture();raw.update(scan_truncated=True,scan_reason='time');self.assertTrue(self.post('preview',raw).json['scan_truncated'])
+  rows=self.post('preview',self.capture(text='취소 완료')).json['records'];self.assertEqual(len(rows),1);self.assertTrue(rows[0]['cancelled']);self.assertEqual(self.post('commit',{'records':rows}).status_code,400)
+
+ def test_two_account_checkpoints_and_naver_are_supported(self):
+  for account,number,name in [(1,'1111111','첫 캠핑장'),(2,'2222222','둘 캠핑장')]:
+   capture=self.capture(provider='naver',text=TEXT.replace('9744403',number).replace('강촌 스칼라 캠프',name));capture['account']=account
+   rows=self.post('preview',capture).json['records'];self.assertEqual(rows[0]['platform_sync']['account'],account);self.assertEqual(rows[0]['platform'],'네이버');self.assertEqual(len(self.post('commit',{'records':rows}).json['added']),1)
+  states=self.client.get('/api/platforms/state').json['naver']['accounts'];self.assertEqual(states['1']['booking_ids'],['1111111']);self.assertEqual(states['2']['booking_ids'],['2222222']);self.assertTrue(states['1']['last_synced']);self.assertTrue(states['2']['last_synced'])
+  bad=self.capture();bad['account']=3;self.assertEqual(self.post('preview',bad).status_code,400)
+
+ def test_account_names_are_shared_without_changing_checkpoint_or_records(self):
+  before=self.client.get('/api/state').json['records'];request={'provider':'naver','account':2,'label':'가족 계정'}
+  response=self.client.post('/api/platforms/accounts/label',json=request,headers=self.headers);self.assertEqual(response.status_code,200)
+  state=self.client.get('/api/platforms/state').json['naver']['accounts'];self.assertEqual(state['2']['label'],'가족 계정');self.assertEqual(state['1']['label'],'계정 1');self.assertIsNone(state['2']['last_synced']);self.assertEqual(self.client.get('/api/state').json['records'],before)
+  request['label']='';self.assertEqual(self.client.post('/api/platforms/accounts/label',json=request,headers=self.headers).json['label'],'계정 2')
+  request['label']='x'*31;self.assertEqual(self.client.post('/api/platforms/accounts/label',json=request,headers=self.headers).status_code,400)

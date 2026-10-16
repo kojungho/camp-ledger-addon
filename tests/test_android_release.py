@@ -32,5 +32,10 @@ class AndroidReleaseTest(unittest.TestCase):
         self.assertEqual(apk,(downloads/'campsite-journal.apk').read_bytes())
         activity=next(a for a in manifest.findall('application/activity') if a.attrib[android+'name'].endswith('PlatformActivity'))
         self.assertEqual(activity.attrib[android+'exported'],'false')
+        application=manifest.find('application');self.assertEqual(application.attrib[android+'name'],'.CampNoteApplication')
+        profiles=[a for a in manifest.findall('application/activity') if a.attrib[android+'name'] in ('.PlatformAccountOneActivity','.PlatformAccountTwoActivity')]
+        self.assertEqual(len(profiles),2);self.assertEqual(len({a.attrib[android+'process'] for a in profiles}),2)
+        self.assertTrue(all(a.attrib[android+'exported']=='false' for a in profiles))
         with zipfile.ZipFile(downloads/'camp-note.apk') as archive:
-            self.assertEqual(archive.read('assets/platform-capture.js'),(ROOT/'android/camp-note/assets/platform-capture.js').read_bytes())
+            for asset in ('platform-capture.js','platform-scroll.js'):
+                self.assertEqual(archive.read('assets/'+asset),(ROOT/'android/camp-note/assets'/asset).read_bytes())

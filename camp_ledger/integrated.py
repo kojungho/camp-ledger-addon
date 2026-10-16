@@ -55,7 +55,9 @@ def install_integration(ledger,mobile,connection,get_settings):
       if not re.fullmatch(r'[a-zA-Z0-9_-]+',ident) or not (staging/'photos'/(ident+'.jpg')).is_file():raise ValueError('사진 파일이 누락됐습니다.')
      if counts!=manifest['counts']:raise ValueError('기록 개수가 백업과 다릅니다.')
      if 'is_cover' not in [r[1] for r in source.execute('PRAGMA table_info(photos)')]:source.execute('ALTER TABLE photos ADD COLUMN is_cover INTEGER NOT NULL DEFAULT 0')
-     source.execute("CREATE TABLE IF NOT EXISTS platform_sync_history(provider TEXT NOT NULL,sync_key TEXT NOT NULL,booking_id TEXT NOT NULL,text_hash TEXT NOT NULL,synced_at TEXT NOT NULL,PRIMARY KEY(provider,sync_key))")
+     source.execute("CREATE TABLE IF NOT EXISTS platform_sync_history(provider TEXT NOT NULL,sync_key TEXT NOT NULL,booking_id TEXT NOT NULL,text_hash TEXT NOT NULL,synced_at TEXT NOT NULL,account INTEGER NOT NULL DEFAULT 1,PRIMARY KEY(provider,sync_key))")
+     if 'account' not in [r[1] for r in source.execute('PRAGMA table_info(platform_sync_history)')]:source.execute('ALTER TABLE platform_sync_history ADD COLUMN account INTEGER NOT NULL DEFAULT 1')
+     source.execute('CREATE TABLE IF NOT EXISTS platform_accounts(provider TEXT NOT NULL,account INTEGER NOT NULL,label TEXT NOT NULL,PRIMARY KEY(provider,account))')
      source.commit()
     finally:source.close()
     with LOCK:
