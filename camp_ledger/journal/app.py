@@ -16,6 +16,7 @@ from . import live_sync
 DATA=Path(os.getenv('JOURNAL_DATA','./.local-data'));DATA.mkdir(parents=True,exist_ok=True)
 MEDIA=DATA/'photos';MEDIA.mkdir(exist_ok=True)
 FIELDS=['platform','booking_url','name','location','map_url','site','price','checkin','checkout','nights','photos','layout','notes','rating']
+MOBILE_TEXT_FIELDS=[k for k in FIELDS if k not in ('photos','layout','rating')]
 LABELS=['예약 플랫폼','캠핑장 링크','캠핑장명','위치','지도 링크','사이트명','가격','입실','퇴실','기간','사진','배치도','메모','평가']
 DETAIL_FIELDS=['name','location','platform','booking_url','site','price','stay','map_url','notes','map','photos','layout']
 DEFAULT_PLATFORMS=['홈페이지','캠핏','땡큐캠핑','네이버','캠핑톡']
@@ -54,6 +55,7 @@ def get_settings(c):
  s=upgrade_columns(json.loads(c.execute('SELECT body FROM settings WHERE id=1').fetchone()[0]));s.setdefault('platforms',list(DEFAULT_PLATFORMS));s.setdefault('scroll_top','bottom-right');s['scroll_top']={'left-top':'top-left','right-top':'top-right','left-bottom':'bottom-left','right-bottom':'bottom-right','left-middle':'bottom-left','right-middle':'bottom-right'}.get(s['scroll_top'],s['scroll_top']);s.setdefault('add_position','bottom-right');s.setdefault('add_label','캠핑 기록 추가');s.setdefault('kakao_key','');s.setdefault('detail_order',list(DETAIL_FIELDS));s.setdefault('field_labels',{});s.setdefault('selection_enabled',True);s.setdefault('duplicate_enabled',True);s.setdefault('detail_duplicate_enabled',s['duplicate_enabled']);s.setdefault('click_actions',{'list':{'name':{'copy':False,'map':True},'location':{'copy':False,'map':True}},'detail':{'name':{'copy':True,'map':False},'location':{'copy':True,'map':False}}})
  for mode in ('desktop','display_mobile'):
   s[mode].setdefault('link_size',20);s[mode].setdefault('order',list(s['order']) if mode=='desktop' else ['name','site','checkin','checkout','nights','location','price','notes','platform','booking_url','map_url','photos','layout','rating']);s[mode].setdefault('map_marker_size',32);s[mode].setdefault('map_label_size',12);s[mode].setdefault('map_button_size',11);s[mode].setdefault('map_label_gap',3);s[mode].setdefault('map_label_box',True);s[mode].setdefault('map_label_padding_x',5);s[mode].setdefault('map_label_padding_y',0);s[mode].setdefault('content_spacing',6);s[mode].setdefault('rating_size',16);s[mode].setdefault('rating_spacing',3);s[mode].setdefault('visible',dict(s['visible']));s[mode].setdefault('photo_size',38);s[mode].setdefault('row_height',0);s[mode].setdefault('layout_caption',False);s[mode].setdefault('layout_size',56)
+ s['display_mobile'].setdefault('text_limits',{k:0 for k in MOBILE_TEXT_FIELDS})
  s.setdefault('floating',{mode:{'addScale':100,'addFont':14,'topScale':100,'topFont':24} for mode in ('pc','mobile')})
  s.setdefault('calendar_choice',{'width':220,'height':210,'font':14})
  s.setdefault('empty_text',{});s.setdefault('default_sort',{'key':'','direction':'desc'})
@@ -462,6 +464,9 @@ def settings():
   box=x.get('map_label_box',True)
   if type(box)!=bool:raise ValueError('지도 이름 박스 표시 설정을 확인해주세요.')
   display[key]={'map_label_box':box,**map_display,'rating_spacing':rating_spacing,'rating_size':rating_size,'layout_size':layout_size,'layout_caption':layout_caption,'row_height':row_height,'font':font,'padding':padding,'widths':widths,'link_size':link_size,'order':mode_order,'visible':mode_visible,'photo_size':photo_size}
+ limits=raw.get('display_mobile',{}).get('text_limits',{})
+ if not isinstance(limits,dict) or any(k not in MOBILE_TEXT_FIELDS or type(v)!=int or not 0<=v<=500 for k,v in limits.items()):raise ValueError('모바일 최대 표시 글자 수는 항목별 0~500자로 설정해주세요.')
+ display['display_mobile']['text_limits']={k:limits.get(k,0) for k in MOBILE_TEXT_FIELDS}
  if raw.get('picker') not in ('files','gallery'):raise ValueError('사진 선택 방식을 확인해주세요.')
  with connection() as c:
   c.execute('BEGIN IMMEDIATE');s=get_settings(c);platforms=raw.get('platforms',s['platforms'])

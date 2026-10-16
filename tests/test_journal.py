@@ -191,6 +191,15 @@ class JournalTest(unittest.TestCase):
   for field,value in [('map_label_box','off'),('map_label_padding_x',-1),('map_label_padding_y',31),('content_spacing',41)]:
    bad=json.loads(json.dumps(saved));bad['display_mobile'][field]=value;self.assertEqual(self.client.put('/api/settings',json=bad,headers=self.headers).status_code,400)
   self.assertEqual(self.client.get('/api/state').json['settings'],saved)
+ def test_mobile_text_limits_persist_without_changing_record_values(self):
+  ident=self.record(name='아주 긴 캠핑장 이름 원본',site='사이트 원본',location='경기도 가평군 원본 주소')
+  before=self.client.get('/api/state').json;settings=before['settings'];settings['display_mobile']['text_limits']={'name':5,'location':10,'site':1,'notes':0,'nights':12}
+  self.assertEqual(self.client.put('/api/settings',json=settings,headers=self.headers).status_code,200)
+  after=self.client.get('/api/state').json;self.assertEqual(before['records'],after['records']);self.assertEqual(after['settings']['display_mobile']['text_limits']['name'],5);self.assertEqual(after['settings']['display_mobile']['text_limits']['platform'],0);self.assertEqual(before['settings']['desktop'],after['settings']['desktop'])
+  saved=after['settings']
+  for invalid in ({'name':-1},{'name':501},{'name':True},{'name':'10'},{'unknown':10},[]):
+   bad=json.loads(json.dumps(saved));bad['display_mobile']['text_limits']=invalid;self.assertEqual(self.client.put('/api/settings',json=bad,headers=self.headers).status_code,400)
+  self.assertEqual(self.client.get('/api/state').json['settings'],saved)
  def test_display_settings_minimums_order_visibility(self):
   s=json.loads(json.dumps(DEFAULTS));s['order']=list(reversed(FIELDS));s['visible']['price']=False;s['desktop']['font']=8;s['desktop']['padding']=2;s['desktop']['widths']['name']=20
   self.assertEqual(self.client.put('/api/settings',json=s,headers=self.headers).status_code,200)

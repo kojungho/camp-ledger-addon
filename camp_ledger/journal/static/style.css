@@ -132,3 +132,8 @@ body>header{border-bottom:0}
 
 .camp-map-boxless .camp-map-name{background:transparent;border:0;border-radius:0;box-shadow:none;padding:0}
 @media(max-width:700px){.camp-card-content>:not(.card-layout):not(.camp-card-rating){margin:0 0 var(--camp-card-content-gap,6px)}.camp-card-content .camp-card-title{margin:0}.camp-card-content>:not(.card-layout):last-child{margin-bottom:0}}
+
+#mobileTextLimitSettings{border-top:1px solid var(--border);padding-top:12px;margin-top:16px}#mobileTextLimits{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 14px}#mobileTextLimits>label{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:8px}#mobileTextLimits input{max-width:85px}
+@media(max-width:700px){.camp-card-content .camp-card-title,.camp-card-content .camp-card-address,.camp-card-content .card-extra,.camp-card-content .camp-card-stay{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal;min-width:0}.camp-card-title-row{flex-wrap:nowrap}.camp-card-title-row>.camp-card-title{display:block}.camp-card-content .card-extra a{white-space:nowrap}.camp-card-book{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+
+@media(max-width:700px){.camp-card-content>.camp-card-rating,.card-layout figcaption{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
