@@ -137,10 +137,10 @@ $('#scroll-top').onclick=()=>window.scrollTo({top:0,behavior:window.matchMedia('
 
 (()=>{const button=$('#scroll-top');const update=()=>{button.hidden=(window.scrollY||document.scrollingElement?.scrollTop||0)<120;};window.addEventListener('scroll',update,{passive:true});window.addEventListener('pageshow',update);update();})();
 
-let displaySettingsTab=window.matchMedia('(max-width:760px)').matches?'mobile':'pc';
-function selectDisplaySettingsTab(key){displaySettingsTab=key;for(const button of $$('[data-display-tab]')){const active=button.dataset.displayTab===key;button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;}$('#pc-display-settings').hidden=key!=='pc';$('#mobile-display-settings').hidden=key!=='mobile';}
-for(const button of $$('[data-display-tab]')){button.addEventListener('click',()=>selectDisplaySettingsTab(button.dataset.displayTab));button.addEventListener('keydown',e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const next=e.key==='Home'?'pc':e.key==='End'?'mobile':displaySettingsTab==='pc'?'mobile':'pc';selectDisplaySettingsTab(next);$('[data-display-tab="'+next+'"]').focus();});}
-document.addEventListener('invalid',e=>{const panel=e.target.closest('#pc-display-settings,#mobile-display-settings');if(panel)selectDisplaySettingsTab(panel.id==='pc-display-settings'?'pc':'mobile');},true);
+let displaySettingsTab='common';
+function selectDisplaySettingsTab(key){displaySettingsTab=key;for(const button of $$('[data-display-tab]')){const active=button.dataset.displayTab===key;button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;}for(const mode of ['common','pc','mobile']){const panel=$('#'+mode+'-display-settings');if(panel)panel.hidden=key!==mode;}}
+for(const button of $$('[data-display-tab]')){button.addEventListener('click',()=>selectDisplaySettingsTab(button.dataset.displayTab));button.addEventListener('keydown',e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const keys=['common','mobile','pc'],index=keys.indexOf(displaySettingsTab),next=e.key==='Home'?'common':e.key==='End'?'pc':keys[(index+(e.key==='ArrowLeft'?2:1))%3];selectDisplaySettingsTab(next);$('[data-display-tab="'+next+'"]').focus();});}
+document.addEventListener('invalid',e=>{const panel=e.target.closest('#common-display-settings,#pc-display-settings,#mobile-display-settings');if(panel)selectDisplaySettingsTab(panel.id.replace('-display-settings',''));},true);
 selectDisplaySettingsTab(displaySettingsTab);
 
 document.getElementById('settings-form').addEventListener('input',e=>{if(e.target.dataset.size||e.target.dataset.mobileSize)queueMicrotask(refreshInheritedSettings);});

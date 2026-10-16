@@ -463,7 +463,13 @@ def settings():
    map_display[field]=value
   box=x.get('map_label_box',True)
   if type(box)!=bool:raise ValueError('지도 이름 박스 표시 설정을 확인해주세요.')
+  field_styles=x.get('field_styles',{})
+  if not isinstance(field_styles,dict) or any(k not in FIELDS or not isinstance(v,dict) for k,v in field_styles.items()):raise ValueError('항목별 화면 설정을 확인해주세요.')
+  for values in field_styles.values():
+   for prop,value in values.items():
+    if prop not in ('font','spacing','padding') or value is not None and (type(value)!=int or not (8 if prop=='font' else 0)<=value<=(60 if prop!='spacing' else 40)):raise ValueError('항목별 글자·여백 범위를 확인해주세요.')
   display[key]={'map_label_box':box,**map_display,'rating_spacing':rating_spacing,'rating_size':rating_size,'layout_size':layout_size,'layout_caption':layout_caption,'row_height':row_height,'font':font,'padding':padding,'widths':widths,'link_size':link_size,'order':mode_order,'visible':mode_visible,'photo_size':photo_size}
+  if field_styles:display[key]['field_styles']=field_styles
  limits=raw.get('display_mobile',{}).get('text_limits',{})
  if not isinstance(limits,dict) or any(k not in MOBILE_TEXT_FIELDS or type(v)!=int or not 0<=v<=500 for k,v in limits.items()):raise ValueError('모바일 최대 표시 글자 수는 항목별 0~500자로 설정해주세요.')
  display['display_mobile']['text_limits']={k:limits.get(k,0) for k in MOBILE_TEXT_FIELDS}
