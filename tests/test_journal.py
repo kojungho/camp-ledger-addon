@@ -177,6 +177,20 @@ class JournalTest(unittest.TestCase):
  def test_atomic_bad_upload(self):
   ident=self.record();r=self.client.post('/api/records/'+ident+'/photos/gallery',data={'photos':(io.BytesIO(b'not image'),'bad.jpg')},headers=self.headers);self.assertEqual(r.status_code,400)
   self.assertEqual(self.client.get('/api/state').json['records'][0]['photos'],[])
+ def test_map_marker_minimum_ten_and_independent_device_settings(self):
+  settings=self.client.get('/api/state').json['settings'];settings['desktop'].update(map_marker_size=10,map_label_gap=0);settings['display_mobile'].update(map_marker_size=18,map_label_gap=7)
+  self.assertEqual(self.client.put('/api/settings',json=settings,headers=self.headers).status_code,200)
+  saved=self.client.get('/api/state').json['settings'];self.assertEqual((saved['desktop']['map_marker_size'],saved['desktop']['map_label_gap']),(10,0));self.assertEqual((saved['display_mobile']['map_marker_size'],saved['display_mobile']['map_label_gap']),(18,7))
+  for mode in ('desktop','display_mobile'):
+   bad=json.loads(json.dumps(saved));bad[mode]['map_marker_size']=9;self.assertEqual(self.client.put('/api/settings',json=bad,headers=self.headers).status_code,400)
+  self.assertEqual(self.client.get('/api/state').json['settings'],saved)
+ def test_map_name_box_padding_and_mobile_content_spacing_settings(self):
+  settings=self.client.get('/api/state').json['settings'];settings['desktop'].update(map_label_box=True,map_label_padding_x=12,map_label_padding_y=8);settings['display_mobile'].update(map_label_box=False,map_label_padding_x=0,map_label_padding_y=0,content_spacing=0)
+  self.assertEqual(self.client.put('/api/settings',json=settings,headers=self.headers).status_code,200)
+  saved=self.client.get('/api/state').json['settings'];self.assertTrue(saved['desktop']['map_label_box']);self.assertFalse(saved['display_mobile']['map_label_box']);self.assertEqual(saved['desktop']['map_label_padding_y'],8);self.assertEqual(saved['display_mobile']['content_spacing'],0)
+  for field,value in [('map_label_box','off'),('map_label_padding_x',-1),('map_label_padding_y',31),('content_spacing',41)]:
+   bad=json.loads(json.dumps(saved));bad['display_mobile'][field]=value;self.assertEqual(self.client.put('/api/settings',json=bad,headers=self.headers).status_code,400)
+  self.assertEqual(self.client.get('/api/state').json['settings'],saved)
  def test_display_settings_minimums_order_visibility(self):
   s=json.loads(json.dumps(DEFAULTS));s['order']=list(reversed(FIELDS));s['visible']['price']=False;s['desktop']['font']=8;s['desktop']['padding']=2;s['desktop']['widths']['name']=20
   self.assertEqual(self.client.put('/api/settings',json=s,headers=self.headers).status_code,200)

@@ -84,7 +84,7 @@ class ReservationTest(unittest.TestCase):
  def test_map_display_sizes_are_separate_and_validated(self):
   settings=self.client.get('/api/state').json['settings'];settings['desktop'].update(map_marker_size=64,map_label_size=18,map_button_size=16,map_label_gap=18);settings['display_mobile'].update(map_marker_size=24,map_label_size=10,map_button_size=9,map_label_gap=0)
   self.assertEqual(self.client.put('/api/settings',json=settings,headers=self.headers).status_code,200);result=self.client.get('/api/state').json['settings'];self.assertEqual(result['desktop']['map_marker_size'],64);self.assertEqual(result['display_mobile']['map_marker_size'],24);self.assertEqual(result['desktop']['map_button_size'],16);self.assertEqual(result['display_mobile']['map_label_size'],10);self.assertEqual(result['desktop']['map_label_gap'],18);self.assertEqual(result['display_mobile']['map_label_gap'],0)
-  for key,value in [('map_marker_size',10),('map_label_size',7),('map_button_size',41),('map_label_gap',-1),('map_label_gap',81)]:
+  for key,value in [('map_marker_size',9),('map_label_size',7),('map_button_size',41),('map_label_gap',-1),('map_label_gap',81)]:
    bad=json.loads(json.dumps(settings));bad['desktop'][key]=value;self.assertEqual(self.client.put('/api/settings',json=bad,headers=self.headers).status_code,400)
 
  def test_noisy_timeline_is_cleaned_without_guessing_site_letters(self):
