@@ -1,0 +1,12 @@
+// Local HTML fixture: a pointer press must not open a modal before its release.
+const {chromium}=require('playwright'),assert=require('node:assert/strict'),path=require('node:path');
+(async()=>{const browser=await chromium.launch({headless:true});try{
+for(const mobile of [false,true])for(const folder of ['camp_ledger/static','camp_ledger/journal/static']){
+ const page=await browser.newPage({viewport:mobile?{width:390,height:844}:{width:1280,height:950},isMobile:mobile,hasTouch:mobile});
+ await page.setContent('<style>dialog{padding:18px}#calendar{margin:20px auto;width:300px;height:320px}#calendar select{height:44px;width:110px}</style><dialog id="calendar"><select id="year"></select><select id="month"></select></dialog>');
+ await page.addStyleTag({path:path.resolve(folder,'calendar-choice.css')});await page.addScriptTag({path:path.resolve(folder,'calendar-choice.js')});await page.evaluate(()=>{year.innerHTML=Array.from({length:71},(_,i)=>`<option value="${2000+i}">${2000+i}년</option>`).join('');year.value='2026';month.innerHTML=Array.from({length:12},(_,i)=>`<option value="${i}">${i+1}월</option>`).join('');month.value='9';window.changes=0;year.onchange=month.onchange=()=>changes++;bindCalendarChoice(year,'year');bindCalendarChoice(month,'month');calendar.showModal()});
+ const activate=async selector=>mobile?await page.locator(selector).tap():await page.locator(selector).click();
+ for(const [selector,value]of [['#year','2027'],['#month','10']]){await activate(selector);assert.equal(await page.locator('.calendar-choice-dialog').evaluate(el=>el.open),true,'The release click must leave the year/month chooser open');await page.locator('.calendar-choice-list [data-value="'+value+'"]').click();assert.equal(await page.locator(selector).inputValue(),value);assert.equal(await page.locator('.calendar-choice-dialog').evaluate(el=>el.open),false);assert.equal(await page.locator('#calendar').evaluate(el=>el.open),true)}
+ assert.equal(await page.evaluate(()=>changes),2);await activate('#year');await page.locator('.calendar-choice-head button').click();assert.equal(await page.evaluate(()=>changes),2);await activate('#month');await page.mouse.click(2,2);assert.equal(await page.locator('.calendar-choice-dialog').evaluate(el=>el.open),false);assert.equal(await page.locator('#calendar').evaluate(el=>el.open),true);await page.close();console.log(folder+' '+(mobile?'touch':'mouse')+': open, select, close and outside click passed');
+}
+}finally{await browser.close()}})().catch(e=>{console.error(e);process.exitCode=1});
