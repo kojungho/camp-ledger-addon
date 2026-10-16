@@ -119,3 +119,32 @@ class PlatformSyncTest(unittest.TestCase):
   state=self.client.get('/api/platforms/state').json['naver']['accounts'];self.assertEqual(state['2']['label'],'가족 계정');self.assertEqual(state['1']['label'],'계정 1');self.assertIsNone(state['2']['last_synced']);self.assertEqual(self.client.get('/api/state').json['records'],before)
   request['label']='';self.assertEqual(self.client.post('/api/platforms/accounts/label',json=request,headers=self.headers).json['label'],'계정 2')
   request['label']='x'*31;self.assertEqual(self.client.post('/api/platforms/accounts/label',json=request,headers=self.headers).status_code,400)
+
+ def test_all_platforms_keep_explicit_fields_links_and_partial_bookings(self):
+  for provider in PROVIDERS:
+   raw=self.capture(provider=provider,text='결제일 2026.09.01\n예약번호 9191919191\n일정 2026.09.01-2026.09.02')
+   raw['cards'][0]['fields']={'name':'숲 캠핑장','site':'A-14','checkin':'2027년 10월 1일','checkout':'2027년 10월 3일','location':'경기 가평군 숲길 15','price':66000,'booking_url':'https://camp.test/camps/123','map_url':'https://map.naver.com/p/entry/place/123','notes':'개인정보 유입 금지'}
+   row=self.post('preview',raw).json['records'][0]
+   self.assertEqual((row['name'],row['site'],row['checkin'],row['checkout']),('숲 캠핑장','A-14','2027-10-01','2027-10-03'),provider)
+   self.assertEqual(row['price'],66000);self.assertEqual(row['booking_url'],'https://camp.test/camps/123');self.assertEqual(row['map_url'],'https://map.naver.com/p/entry/place/123');self.assertNotEqual(row.get('notes'),'개인정보 유입 금지')
+   raw['cards'][0]['text']='구조가 다른 예약';raw['cards'][0]['fields']={'name':'숲 캠핑장','site':'A-14','checkin':'2026.10.01'}
+   row=self.post('preview',raw).json['records'][0];self.assertTrue(row['needs_dates']);self.assertEqual(row['checkin'],'2026-10-01');self.assertFalse(row['checkout'])
+
+ def test_invalid_links_are_ignored_and_combined_cards_do_not_share_fields(self):
+  raw=self.capture(text='캠핑장명: 별 캠핑장\n입실일: 2026.10.01\n퇴실일: 2026.10.03')
+  raw['cards'][0]['fields']={'booking_url':'javascript:alert(1)','map_url':'https://user:secret@map.test/place/123','price':True}
+  row=self.post('preview',raw).json['records'][0];self.assertFalse(row.get('booking_url'));self.assertFalse(row.get('map_url'));self.assertNotEqual(row.get('price'),True)
+  raw['cards'][0]['text']='별 캠핑장\n일정 26.10.01-26.10.03\n달 캠핑장\n일정 26.11.01-26.11.03';raw['cards'][0]['fields']={'name':'다른 캠핑장','site':'잘못된 사이트'}
+  rows=self.post('preview',raw).json['records'];self.assertEqual(len(rows),2);self.assertEqual([r['name'] for r in rows],['별 캠핑장','달 캠핑장'])
+
+ def test_campsite_link_survives_selection_and_commit(self):
+  raw=self.capture(text='캠핑장명: 숲 캠핑장\n예약번호: 9191919191\n입실일: 2026.10.01\n퇴실일: 2026.10.03')
+  raw['cards'][0]['fields']={'booking_url':'https://camfit.co.kr/camp/public123','map_url':'https://map.naver.com/p/entry/place/123'};raw['collapsed_unread']=True
+  result=self.post('preview',raw).json;self.assertTrue(result['collapsed_unread']);row=result['records'][0]
+  self.assertEqual(self.post('commit',{'records':[row]}).status_code,200)
+  saved=self.client.get('/api/state').json['records'][0];self.assertEqual(saved['booking_url'],row['booking_url']);self.assertEqual(saved['map_url'],row['map_url'])
+
+ def test_policy_and_cancel_action_do_not_disable_an_active_captured_booking(self):
+  for provider in PROVIDERS:
+   raw=self.capture(provider=provider,text='캠핑장명: 숲 캠핑장\n예약번호: 9191919191\n입실일: 2026.10.01\n퇴실일: 2026.10.03\n예약이 취소될 경우 환불 규정 적용\n예약 취소');raw['cards'][0]['cancelled']=False
+   self.assertFalse(self.post('preview',raw).json['records'][0]['cancelled'])

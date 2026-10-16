@@ -60,7 +60,7 @@ public class PlatformActivity extends Activity {
  private void capture(){
   if(busy)return;scanBrowser=activeBrowser==null?browser:activeBrowser;Uri url=Uri.parse(scanBrowser.getUrl()==null?"":scanBrowser.getUrl());if(!platformHost(url.getHost())||!"https".equals(url.getScheme())){showStatus("플랫폼 로그인을 완료한 뒤 예약 화면에서 동기화를 눌러주세요.");return;}
   busy=true;scanning=true;syncState(true,"읽기 중지");showStatus("현재 페이지의 아래쪽 예약도 스크롤하며 읽고 있습니다…");final int generation=++scanGeneration;
-  try{String capture=new String(read(getAssets().open("platform-capture.js"),100000),"UTF-8"),scroll=new String(read(getAssets().open("platform-scroll.js"),100000),"UTF-8");String naver=new String(read(getAssets().open("platform-naver.js"),100000),"UTF-8");String script="(function(){window.__campNoteNaverCapture="+naver+";window.__campNoteReservationScan="+scroll+"(function(){return "+capture+"});return window.__campNoteReservationScan.step();})()";pollScan(script,generation,0);
+  try{String capture=new String(read(getAssets().open("platform-capture.js"),100000),"UTF-8"),scroll=new String(read(getAssets().open("platform-scroll.js"),100000),"UTF-8");String naver=new String(read(getAssets().open("platform-naver.js"),100000),"UTF-8"),fields=new String(read(getAssets().open("platform-fields.js"),100000),"UTF-8");String script="(function(){window.__campNoteFields="+fields+"();window.__campNoteNaverCapture="+naver+";window.__campNoteReservationScan="+scroll+"(function(){return "+capture+"});return window.__campNoteReservationScan.step();})()";pollScan(script,generation,0);
   }catch(Exception error){done("동기화 구성요소를 읽지 못했습니다.");}
  }
  private void pollScan(String script,int generation,int attempts){

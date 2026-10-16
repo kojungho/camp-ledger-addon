@@ -15,7 +15,7 @@ jar cf "$build_dir/classes.jar" -C "$build_dir/classes" .
 "$build_tools/zipalign" -p -f 4 "$build_dir/unsigned.apk" "$build_dir/aligned.apk"
 "$build_tools/apksigner" sign --ks "${CAMP_APK_KEYSTORE:?Set CAMP_APK_KEYSTORE}" --ks-key-alias campsite-journal --ks-pass env:CAMP_APK_STOREPASS --key-pass env:CAMP_APK_STOREPASS --out "$build_dir/test.apk" "$build_dir/aligned.apk"
 "$sdk_dir/platform-tools/adb" -s "$serial" install -r "$build_dir/test.apk"
-for runner in StartupTest ScanTest DetailScanTest NaverPopupScanTest CheckpointScanTest ProfileOneTest ProfileTwoTest ProfileOneTest; do
+for runner in StartupTest CamfitFieldsTest ThankqFieldsTest CampingtalkFieldsTest NaverFieldsTest ScanTest DetailScanTest NaverPopupScanTest CheckpointScanTest ProfileOneTest ProfileTwoTest ProfileOneTest; do
   "$sdk_dir/platform-tools/adb" -s "$serial" shell am instrument -w "co.kr.badara.campsitejournal.test/co.kr.badara.campsitejournal.test.$runner" | tee "$build_dir/$runner-result.txt"
   rg -q 'INSTRUMENTATION_RESULT: result=PASS' "$build_dir/$runner-result.txt"
 done

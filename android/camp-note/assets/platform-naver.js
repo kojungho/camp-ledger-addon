@@ -2,7 +2,7 @@
  'use strict';
  if(!/(^|\.)naver\.com$/i.test(location.hostname))return null;
  const text=el=>(el?.innerText||'').trim(),visible=el=>{const r=el.getBoundingClientRect();return r.width>0&&r.height>0};
- const datePattern=/(?<![\d.])(?:(\d{4}|\d{2})\s*[.\/-]\s*)?(\d{1,2})\s*[.\/]\s*(\d{1,2})(?:\s*\(?[월화수목금토일]\)?)?/g;
+ const datePattern=/(?<![\d.])(?:(\d{4}|\d{2})\s*[.\/년-]\s*)?(\d{1,2})\s*[.\/월-]\s*(\d{1,2})(?:일)?(?:\s*\(?[월화수목금토일]\)?)?/g;
  const dates=value=>[...value.matchAll(datePattern)].filter(m=>Number(m[2])>=1&&Number(m[2])<=12&&Number(m[3])>=1&&Number(m[3])<=31);
  const idPattern=/예약\s*(?:번호|코드)\s*[:：#]?\s*([A-Za-z0-9][A-Za-z0-9_-]{4,79})/g;
  const cancelled=value=>/취소\s*완료|예약(?:이|가)\s*취소(?:되었습니다|됐습니다|됨)|취소된\s*예약|예약\s*취소됨/.test(value)||value.split(/\n/).some(line=>/^(?:예약\s*)?취소$/.test(line.trim()));
@@ -30,15 +30,15 @@
   const camping=category==='stay'||/캠핑장|캠프|야영장|글램핑|카라반|휴양림|목장/.test(name)||lodging||/숙박|객실|입실|퇴실|체크인|체크아웃|\d+\s*박/.test(source);
   if(!camping)return null;
   const ids=[...source.matchAll(idPattern)];if(ids.length>1)return null;
-  let values=[];const labelled=field(lines,'일정|이용기간|숙박기간|예약일');if(labelled)values=dates(labelled);if(!values.length)values=dates(source);if(values.length>2&&!detail)return null;
+  let values=[];const start=field(lines,'입실일|입실|체크인|이용시작일'),end=field(lines,'퇴실일|퇴실|체크아웃|이용종료일');if(start&&dates(start).length){values=[dates(start)[0]];if(end&&dates(end).length)values.push(dates(end)[0])}const labelled=field(lines,'일정|이용기간|숙박기간');if(!values.length&&labelled)values=dates(labelled);if(!values.length)values=dates(lines.filter(line=>!/결제일|예약접수일|예약신청일/.test(line)).join('\n'));if(values.length>2&&!detail)return null;
   if(!values.length)return null;
   let site=field(lines,'사이트명|사이트|객실명|객실|상품명|이용상품|상품').replace(/\(\d+\)\s*$/,'').trim();
   if(!site){const index=lines.indexOf(name);const candidate=lines.slice(index+1).find(v=>!dates(v).length&&!/예약|상세|후기|리뷰|입실|퇴실|이용완료|^\d[\d,]*원$/.test(v)&&/^(?:[A-Z]\s*\d+|[A-Z]구역|[A-Z]존|\d+사이트|성인|오토캠핑|데크|파쇄석)|사이트|호수뷰|차박/.test(v));if(candidate)site=candidate.replace(/\s*[·ㆍ]\s*[\d,]+원.*$/,'').trim()}
-  const normalized=['캠핑장명: '+name];if(ids[0])normalized.push('예약번호: '+ids[0][1]);if(site)normalized.push('사이트명: '+site);normalized.push('입실일: '+values[0][0]);if(values[1])normalized.push('퇴실일: '+values[1][0]);else{const nights=source.match(/(\d{1,3})\s*박/);if(nights)normalized.push(nights[1]+'박')}
+  const normalized=['캠핑장명: '+name];if(ids[0])normalized.push('예약번호: '+ids[0][1]);if(site)normalized.push('사이트명: '+site);const day=m=>m[0].replace(/(\d)\s*[년월]/g,'$1.').replace(/(\d)일/g,'$1');normalized.push('입실일: '+day(values[0]));if(values[1])normalized.push('퇴실일: '+day(values[1]));else{const nights=source.match(/(\d{1,3})\s*박/);if(nights)normalized.push(nights[1]+'박')}
   const address=field(lines,'주소|위치|소재지');if(address)normalized.push('주소: '+address);
   const price=source.match(/(?:[·ㆍ]|가격\s*[:：]?|금액\s*[:：]?)\s*([\d,]+)\s*원/);if(price)normalized.push('금액: '+price[1]+'원');
-  if(cancelled(source))normalized.push('예약이 취소되었습니다');
-  return {text:normalized.join('\n'),media:photos(el,name,detail),single_card:true,cancelled:cancelled(source)};
+  const actions=new Set([...el.querySelectorAll('button,a,[role="button"]')].map(text));const state=source.split('\n').filter(line=>!actions.has(line)).join('\n');if(cancelled(state))normalized.push('예약이 취소되었습니다');
+  const card={text:normalized.join('\n'),media:photos(el,name,detail),single_card:true,cancelled:cancelled(state)};return typeof window!=='undefined'&&window.__campNoteFields?window.__campNoteFields.enrich(card,el,detail):card;
  }
  const modals=[...document.querySelectorAll('[role="dialog"],[aria-modal="true"],dialog[open],[class*="popup" i],[class*="modal" i],[class*="layer" i]')].filter(visible);
  for(const root of [...modals,document.body]){const value=text(root);if([...value.matchAll(idPattern)].length===1&&/예약\s*번호/.test(value)&&/일정|입실|퇴실|예약\s*정보/.test(value)){const row=parse(root,true);if(row)return {cards:[row]}}}

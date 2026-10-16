@@ -12,3 +12,5 @@ const detail='예약이 취소되었습니다\n환불 계좌 정보\n이름\n개
 const detailed=capture([],detail);assert.equal(detailed.cards.length,1);const d=detailed.cards[0];assert.equal(d.cancelled,true);assert.equal(d.single_card,true);assert.match(d.text,/캠핑장명: 숲속 캠핑장/);assert.match(d.text,/입실일: 07.27/);assert.match(d.text,/퇴실일: 07.28/);assert.match(d.text,/사이트명: A-14/);assert.match(d.text,/총금액: 66,000원/);assert.doesNotMatch(d.text,/개인정보테스트|123456789012|35,000/);
 const active=capture([],detail.replace('예약이 취소되었습니다','예약이 완료되었습니다\n예약이 취소될 경우 환불 규정 적용'));assert.equal(active.cards[0].cancelled,false,'Cancellation policy is not a cancelled status');
 console.log('Camfit detail: separated short dates and fields form one booking, cancelled status stays disabled, and bank/customer/refund details are omitted.');
+
+const policy=card('숲 캠핑장\n예약번호: 9191919191\n입실일 2026.10.01 퇴실일 2026.10.03\n예약이 취소될 경우 환불 규정 적용');assert.equal(capture([policy]).cards[0].cancelled,false);

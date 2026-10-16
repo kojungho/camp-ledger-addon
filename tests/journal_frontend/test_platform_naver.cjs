@@ -16,3 +16,6 @@ console.log('Naver lodging and recent mixed lists preserve place/product/date bo
 const statusFirst=node('이용전\n하늘구니 더원\n5.3 일 예약\n상세보기',{titles:['이용전','하늘구니 더원'],marks:['숙박']});assert.match(capture([statusFirst]).cards[0].text,/캠핑장명: 하늘구니 더원/);
 
 const unmarked=node('해돈 텍사스 바베큐 그릴\n8.1 토 오후 7:00 예약\n테이블 예약',{titles:['해돈 텍사스 바베큐 그릴']});assert.equal(capture([unmarked],{body:node('예약·장소\n예약·주문\n'+unmarked.innerText)}).cards.length,0);
+
+const separate=node('캠핑장명: 숲 캠핑장\n예약번호: 9191919191\n결제일: 2026.09.01\n입실일: 2027년 10월 1일\n퇴실일: 2027년 10월 3일\n예약 정보',{titles:['숲 캠핑장'],marks:['숙박']});
+const normalized=capture([separate]).cards[0].text;assert.match(normalized,/입실일: 2027. 10. 1/);assert.match(normalized,/퇴실일: 2027. 10. 3/);assert.doesNotMatch(normalized,/2026.09.01/);

@@ -37,5 +37,5 @@ class AndroidReleaseTest(unittest.TestCase):
         self.assertEqual(len(profiles),2);self.assertEqual(len({a.attrib[android+'process'] for a in profiles}),2)
         self.assertTrue(all(a.attrib[android+'exported']=='false' for a in profiles))
         with zipfile.ZipFile(downloads/'camp-note.apk') as archive:
-            for asset in ('platform-capture.js','platform-scroll.js','platform-naver.js'):
+            for asset in ('platform-capture.js','platform-scroll.js','platform-naver.js','platform-fields.js'):
                 self.assertEqual(archive.read('assets/'+asset),(ROOT/'android/camp-note/assets'/asset).read_bytes())

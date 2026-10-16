@@ -42,12 +42,13 @@
    if(layout&&layouts<3){media.push({kind:'layout',url:src});layouts++;}
    else if(!layout&&!gallery){media.push({kind:'gallery',url:src});gallery=true;}
   }
-  const cancelled=!!detail?.cancelled||/취소\s*완료|예약(?:이|가)\s*취소|취소된\s*예약|예약\s*취소됨/.test(value)||[...el.querySelectorAll('[class*="status" i],[class*="badge" i],[class*="state" i]')].some(node=>!node.closest('button,a,[role="button"]')&&/^(?:예약\s*)?취소$/.test(text(node)));
-  cards.push({text:value,media,single_card:true,cancelled});if(cards.length>=100)break;
+  const cancelled=!!detail?.cancelled||/취소\s*완료|예약(?:이|가)?\s*취소(?:되었습니다|됐습니다|되었어요|됐어요|됨)|취소된\s*예약/.test(value)||[...el.querySelectorAll('[class*="status" i],[class*="badge" i],[class*="state" i]')].some(node=>!node.closest('button,a,[role="button"]')&&/^(?:예약\s*)?취소$/.test(text(node)));
+  const card={text:value,media,single_card:true,cancelled};cards.push(typeof window!=='undefined'&&window.__campNoteFields?window.__campNoteFields.enrich(card,el,!!detail):card);if(cards.length>=100)break;
  }
  if(!cards.length){
   const value=text(document.body).slice(0,8000);
   if((/my|member|reserv|booking|resv/i.test(location.pathname)||location.hostname==='my.naver.com')&&dated(value)&&/예약\s*번호|입실|퇴실|체크인|체크아웃|일정|예약정보/.test(value))cards.push({text:value,media:[],single_card:[...value.matchAll(/예약\s*(?:번호|코드)\s*[:：#]?\s*([A-Za-z0-9][A-Za-z0-9_-]{4,79})/g)].length===1,cancelled:detailCancelled});
  }
+ if(typeof window!=='undefined'&&window.__campNoteFields)for(const card of cards)if(!card.fields&&card.single_card)window.__campNoteFields.enrich(card,document.body,true);
  return JSON.stringify(cards.length?{cards}:{error:'예약을 읽지 못했습니다. 로그인 후 예약 내역 또는 예약 상세 화면을 열어주세요.'});
 })();

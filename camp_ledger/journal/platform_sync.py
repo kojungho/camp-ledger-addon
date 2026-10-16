@@ -2,9 +2,9 @@
 import base64,binascii,hashlib,io,json,re,uuid
 from datetime import datetime,timezone
 from PIL import Image,ImageOps,UnidentifiedImageError
-from .reservation_import import review_records,identity
+from .reservation_import import review_records,identity,partial_fields
 MAX_BOOKINGS=100
-CANCELLED=re.compile(r'취소\s*완료|예약(?:이|가)\s*취소|취소된\s*예약|예약\s*취소됨')
+CANCELLED=re.compile(r'취소\s*완료|예약(?:이|가)?\s*취소(?:되었습니다|됐습니다|되었어요|됐어요|됨)|취소된\s*예약')
 PROVIDERS={'camfit':'캠핏','thankq':'땡큐캠핑','campingtalk':'캠핑톡','naver':'네이버'}
 def booking_id(text):
  match=re.search(r'예약\s*(?:번호|코드|번호\s*[:：])\s*[:：#]?\s*([A-Za-z0-9][A-Za-z0-9_-]{4,79})',text)
@@ -73,6 +73,40 @@ def match_record(records,fields,ref):
  if len(matches)>1:raise ValueError('같은 캠핑장·기간의 기록이 여러 개입니다. 기존 기록을 확인해주세요.')
  return matches[0] if matches else None
 
+def captured_fields(raw):
+ """Only explicit booking labels and public HTTP links supplied by the collector."""
+ from urllib.parse import urlsplit
+ if not isinstance(raw,dict):return {}
+ fields={}
+ for key in ('name','site','location','checkin','checkout','price','booking_url','map_url'):
+  value=raw.get(key)
+  if key=='price':
+   if type(value) is int and 0<=value<=1000000000:fields[key]=value
+   continue
+  if not isinstance(value,str) or not value.strip() or len(value)>(2048 if key.endswith('_url') else 300):continue
+  value=value.strip()
+  if key.endswith('_url'):
+   try:
+    url=urlsplit(value)
+    if url.scheme not in ('https','http') or not url.hostname or url.username or url.password:continue
+   except ValueError:continue
+  fields[key]=value
+ return fields
+
+def enrich_fields(row,fields):
+ merged={**row,**{key:value for key,value in fields.items() if key not in ('checkin','checkout')}}
+ if fields.get('checkin') or fields.get('checkout'):
+  text='숙소명: '+(merged.get('name') or '확인 필요')+'\n'+'\n'.join(('입실일' if key=='checkin' else '퇴실일')+': '+re.sub(r'(\d)\s*[년월]',r'\1.',fields[key]).replace('일','') for key in ('checkin','checkout') if fields.get(key))
+  parsed=partial_fields(text)[0]
+  # A lone checkout date must never be reinterpreted as check-in.
+  if fields.get('checkin') and parsed.get('checkin'):merged['checkin']=parsed['checkin']
+  if fields.get('checkout') and parsed.get('checkout'):merged['checkout']=parsed['checkout']
+  if parsed.get('year_assumed'):merged['year_assumed']=True;merged['date_hint']=parsed.get('date_hint','')
+ if merged.get('checkin') and merged.get('checkout') and merged['checkout']<merged['checkin']:
+  merged['checkout']='';merged['review_warnings']=[*merged.get('review_warnings',[]),'퇴실일을 확인해 선택해주세요.']
+ merged['needs_dates']=not bool(merged.get('checkin') and merged.get('checkout'))
+ return merged
+
 def preview(raw,records,history=()):
  if not isinstance(raw,dict) or raw.get('provider') not in PROVIDERS:raise ValueError('지원하는 플랫폼을 선택해주세요.')
  cards=raw.get('cards',[])
@@ -86,8 +120,10 @@ def preview(raw,records,history=()):
  for card in cards:
   if not isinstance(card,dict) or not isinstance(card.get('text'),str) or len(card['text'])>8000:raise ValueError('예약 화면 내용을 확인해주세요.')
   text=card['text']
-  cancelled=card.get('cancelled') is True or bool(CANCELLED.search(text))
-  rows=review_records(text)
+  cancelled=card['cancelled'] if type(card.get('cancelled')) is bool else bool(CANCELLED.search(text))
+  rows=review_records(text);fields=captured_fields(card.get('fields'))
+  if not rows and fields:rows=[{'name':'','site':'','checkin':'','checkout':'','needs_review':True}]
+  if len(rows)==1:rows=[enrich_fields(rows[0],fields)]
   if not rows:
    if not cancelled:continue
    rows=[{'name':'취소된 예약','notes':text,'checkin':'','checkout':''}]
@@ -110,7 +146,7 @@ def preview(raw,records,history=()):
    if gallery:merged['thumbnail']=gallery['data']
    merged['duplicate']=False;result.append(merged)
  limited=len(result)>MAX_BOOKINGS;result=result[:MAX_BOOKINGS]
- return {'records':result,'ignored_non_lodging':raw.get('ignored_non_lodging') is True,'cancelled_count':sum(r['cancelled'] for r in result),'already_synced':already,'scan_truncated':limited or raw.get('scan_truncated') is True,'stopped_at_synced':raw.get('stopped_at_synced') is True,'scan_reason':'limit' if limited else raw.get('scan_reason','') if raw.get('scan_reason') in ('limit','time','checkpoint') else ''}
+ return {'collapsed_unread':raw.get('collapsed_unread') is True,'records':result,'ignored_non_lodging':raw.get('ignored_non_lodging') is True,'cancelled_count':sum(r['cancelled'] for r in result),'already_synced':already,'scan_truncated':limited or raw.get('scan_truncated') is True,'stopped_at_synced':raw.get('stopped_at_synced') is True,'scan_reason':'limit' if limited else raw.get('scan_reason','') if raw.get('scan_reason') in ('limit','time','checkpoint') else ''}
 
 def commit(raw,connection,clean,reject_duplicate,media_root):
  rows=raw.get('records') if isinstance(raw,dict) else None
