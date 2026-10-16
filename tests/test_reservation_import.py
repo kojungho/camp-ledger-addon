@@ -147,3 +147,17 @@ EF) 3사이트캠핑장.ㆍ175,000원
   with patch('shutil.copyfile',side_effect=OSError('disk failure')),self.assertLogs(app.logger,level='ERROR'):
    self.assertEqual(self.client.post('/api/import/commit',json={'records':[row]},headers=self.headers).status_code,500)
   self.assertEqual(self.client.get('/api/state').json['records'],before);self.assertEqual(set(MEDIA.iterdir()),files);self.assertTrue(original_files<=files)
+
+ def test_visit_receipt_fields_survive_unreadable_date_and_ad_noise(self):
+  text='닫기 플랫폼 홈 현재 예약 동기화\n산너미목장 > ee\n관광농원,팜스테이 · 강원 평창군 미탄면\n481025\n오전 12:00 · 1번째 방문\n이 날 방문 어땠어요? 리뷰를 남겨보세요\nAD\n살반 캠핑 에어텐트 펌프\n내역\n산너미 차박\n총 금액 110,000원\n예약 내역'
+  row=review_records(text)[0]
+  self.assertEqual(row['name'],'산너미목장');self.assertEqual(row['site'],'산너미 차박');self.assertEqual(row['price'],110000)
+  self.assertEqual(row['location'],'강원 평창군 미탄면');self.assertFalse(row['checkin']);self.assertFalse(row['checkout']);self.assertTrue(row['needs_dates'])
+  row=review_records(text.replace('481025','4월 10일 금'))[0]
+  self.assertEqual(row['checkin'],f'{current_year()}-04-10');self.assertTrue(row['year_assumed']);self.assertFalse(row['checkout'])
+
+ def test_visit_receipt_special_handling_does_not_merge_two_receipts(self):
+  from journal.reservation_import import parse_visit_receipt
+  text='산너미목장\n4월 10일 금\n1번째 방문\n내역\n산너미 차박\n총 금액 110,000원'
+  self.assertEqual(parse_visit_receipt(text+'\n'+text),[])
+  self.assertEqual(parse_visit_receipt('일반 캠핑장\n일정 26.04.10-26.04.12'),[])

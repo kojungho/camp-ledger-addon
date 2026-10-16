@@ -1,5 +1,5 @@
 """Local screenshot OCR and conservative reservation extraction; no external service."""
-import io,re,subprocess,tempfile,unicodedata,os,time,threading,base64,binascii
+import io,csv,re,subprocess,tempfile,unicodedata,os,time,threading,base64,binascii
 from pathlib import Path
 from PIL import Image,ImageOps,UnidentifiedImageError
 
@@ -94,6 +94,29 @@ def clean_booking_lines(text):
   lines.append(line)
  return lines
 
+def parse_visit_receipt(text,date_text=None):
+ """One Naver visit receipt: keep the merchant header, visit day and billed item, not ads."""
+ lines=[re.sub(r'\s+',' ',line).strip() for line in text.splitlines() if line.strip()]
+ if not re.search(r'(?:\d+\s*번째\s*방문|이\s*날\s*방문|리뷰를\s*남겨)',text) or not re.search(r'총\s*금액',text) or not any(re.fullmatch(r'내역',line) for line in lines):return []
+ if len(re.findall(r'총\s*금액',text))>1:return []
+ stop=next((i for i,line in enumerate(lines) if re.search(r'\bAD\b',line)),len(lines));header=lines[:stop]
+ name=next((clean_name(re.split(r'[>›»❯]',line,maxsplit=1)[0]) for line in header if re.search(r'캠핑장|캠프|야영장|글램핑|카라반|휴양림|목장',line) and not re.search(r'예약|로그인|사이트|주소|관광농원|이용약관|중개|캠핑[,，·ㆍ]야영장',line)),'')
+ start=next((i for i,line in enumerate(header) if name and name in line),0)
+ date_source=date_text if date_text is not None else '\n'.join(header[start+1:])
+ partial=partial_fields('숙소명: '+name+'\n'+date_source)
+ row=partial[0] if partial else {'name':name,'site':'','checkin':'','checkout':''}
+ row['name']=name;row['checkout']='';row['needs_dates']=True;row['needs_review']=True
+ index=next(i for i,line in enumerate(lines) if line=='내역')
+ after=lines[index+1:];end=next((i for i,line in enumerate(after) if re.match(r'총\s*금액',line)),len(after))
+ row['site']=' · '.join(line for line in after[:end] if not re.search(r'리뷰|예약\s*내역|^[0-9,]+\s*원$',line))[:200]
+ amount=re.search(r'총\s*금액\s*[:：]?\s*([0-9,]+)\s*원',text)
+ if amount:row['price']=int(amount.group(1).replace(',',''))
+ for line in header[start+1:]:
+  address=re.search(r'(?:강원(?:특별자치도|도)?|경기(?:도)?|충청[남북]도|충[남북]|전라[남북]도|전북특별자치도|전[남북]|경상[남북]도|경[남북]|제주(?:특별자치도|도)?|서울(?:특별시)?|부산(?:광역시)?|대구(?:광역시)?|인천(?:광역시)?|광주(?:광역시)?|대전(?:광역시)?|울산(?:광역시)?|세종(?:특별자치시)?)\s*(?:[가-힣0-9.-]+(?:시|군|구|읍|면|동|리|로|길)\s*)+',line)
+  if address:row['location']=address.group().strip();break
+ row['review_warnings']=['방문일을 입실일로 넣었습니다. 퇴실일을 확인해 선택해주세요.' if row.get('checkin') else '방문일을 읽지 못했습니다. 날짜를 확인해주세요.']
+ return [row] if name or row['site'] or row.get('price') is not None else []
+
 def _review_block(text):
  rows=partial_fields(text) if re.search(r'(?m)^(?:캠핑장명|업체명|숙소명)\s*[:：]',text) else parse_reservations(text)
  if not rows:
@@ -115,6 +138,8 @@ def _review_block(text):
  return rows
 
 def review_records(text):
+ visit=parse_visit_receipt(text)
+ if visit:return visit
  lines=clean_booking_lines(text)
  # A standalone visit date or explicit repeated name label is a record boundary.
  boundaries=[i for i,line in enumerate(lines) if DAY_HEADER.fullmatch(line) and any(CATEGORY.search(next_line) or re.search(r'캠핑장|캠프|야영장|숙소명\s*[:：]',next_line) for next_line in lines[i+1:i+4])]
@@ -272,22 +297,51 @@ def image_text(file,with_records=False):
  try:
   with tempfile.TemporaryDirectory(prefix='camp-ocr-') as directory:
    deadline=time.monotonic()+50;timed_out=False;outputs=[]
-   def recognize(picture,name,limit=20):
-    # Enlarge text, not the photograph-filled whole screenshot. Keep a bounded canvas.
-    if picture.width<1100:
-     scale=min(1.5,1100/picture.width);picture=picture.resize((round(picture.width*scale),round(picture.height*scale)),Image.Resampling.LANCZOS)
-    picture.thumbnail((1500,6500));picture=ImageOps.expand(ImageOps.grayscale(picture),border=12,fill='white')
-    path=(Path(directory)/(name+'.png')).resolve();picture.save(path)
-    args=['tesseract',str(path),'stdout','-l','kor+eng','--psm','6']
-    models=Path(os.getenv('CAMP_OCR_MODELS','/app/ocr-models'))
+   layouts={}
+   def recognize(picture,name,limit=20,psm=6,scale=None,lang='kor+eng',layout=False):
+    original_size=picture.size;picture=picture.copy()
+    factor=scale if scale is not None else min(1.5,1100/picture.width) if picture.width<1100 else 1
+    if factor!=1:picture=picture.resize((round(picture.width*factor),round(picture.height*factor)),Image.Resampling.LANCZOS)
+    picture.thumbnail((1500,6500));sy=picture.height/original_size[1];picture=ImageOps.expand(ImageOps.grayscale(picture),border=12,fill='white')
+    path=(Path(directory)/(name+'.png')).resolve();picture.save(path);base=path.with_name(name+'-result')
+    args=['tesseract',str(path),str(base) if layout else 'stdout','-l',lang,'--psm',str(psm)]
+    models=Path(os.getenv('CAMP_OCR_MODELS','/app/ocr-models')).resolve()
     if (models/'kor.traineddata').is_file():args.extend(['--tessdata-dir',str(models)])
-    try:result=subprocess.run(args,capture_output=True,text=True,timeout=max(1,min(limit,deadline-time.monotonic())),env={**os.environ,'OMP_THREAD_LIMIT':'1','OMP_NUM_THREADS':'1'})
+    if layout:args.extend(['-c','tessedit_create_txt=1','-c','tessedit_create_tsv=1'])
+    try:result=subprocess.run(args,capture_output=True,text=True,errors='replace',timeout=max(1,min(limit,deadline-time.monotonic())),env={**os.environ,'OMP_THREAD_LIMIT':'1','OMP_NUM_THREADS':'1'})
     except FileNotFoundError:raise ValueError('사진 인식 구성요소가 없습니다. 인식할 글자를 직접 붙여넣어주세요.')
     if result.returncode:raise ValueError('사진에서 글자를 읽지 못했습니다. 다른 사진이나 직접 입력을 사용해주세요.')
-    return result.stdout[:50000]
+    metadata=base.with_suffix('.tsv');groups={}
+    if layout and metadata.is_file():
+     for word in csv.DictReader(io.StringIO(metadata.read_text(errors='replace')),delimiter='\t'):
+      if word.get('level')!='5' or not word.get('text','').strip():continue
+      try:x,y,w,h=[int(word[key]) for key in ('left','top','width','height')]
+      except (KeyError,ValueError):continue
+      key=tuple(word.get(k) for k in ('block_num','par_num','line_num'));line=groups.setdefault(key,{'top':max(0,(y-12)/sy),'words':[]});line['top']=min(line['top'],max(0,(y-12)/sy));line['words'].append(word['text'])
+     layouts[name]=[{'top':v['top'],'text':' '.join(v['words'])} for v in sorted(groups.values(),key=lambda v:v['top'])]
+    output_file=base.with_suffix('.txt')
+    return (output_file.read_text(errors='replace') if layout and output_file.is_file() else result.stdout)[:50000]
    def output(text,rows=None):
     return {'text':text,'records':rows if rows is not None else review_records(text)} if with_records else text
-   boxes=thumbnail_boxes(image)
+   boxes=thumbnail_boxes(image);layout_text=None
+   # Visit receipts have their date on the left and ad photos near the bottom.
+   # Recognize this layout before treating any advertising tile as a campsite photo.
+   if image.height>=image.width*1.6 and (not boxes or boxes[0][1]>image.height*.5):
+    try:layout_text=recognize(image,'layout',limit=16,layout=True)
+    except subprocess.TimeoutExpired:timed_out=True
+    if layout_text:
+     outputs.append(layout_text);visit=parse_visit_receipt(layout_text)
+     if visit:
+      anchor=next((line for line in layouts.get('layout',[]) if re.search(r'번째방문|(?:오전|오후).*방문',re.sub(r'\s+','',line['text']))),None)
+      if anchor and deadline-time.monotonic()>3:
+       top=max(0,round(anchor['top']-image.width*.17));bottom=max(top+1,min(image.height,round(anchor['top']-image.width*.01)))
+       crop=image.crop((round(image.width*.02),top,round(image.width*.62),bottom))
+       try:focused=recognize(crop,'visit-date',limit=8,psm=7,scale=3,lang='kor')
+       except (subprocess.TimeoutExpired,ValueError):focused='';timed_out=True
+       if focused:
+        recovered=parse_visit_receipt(layout_text,date_text=focused)
+        if recovered and recovered[0].get('checkin'):visit=recovered;layout_text+='\n\n방문일 재인식: '+focused.strip()
+      return output(layout_text,visit)
    if boxes:
     parts=[];rows=[]
     for index,box in enumerate(boxes):
@@ -302,22 +356,25 @@ def image_text(file,with_records=False):
      except subprocess.TimeoutExpired:timed_out=True;continue
      parts.append(text);found=review_records(text)
      # Only attach a crop when this bounded card contains exactly one reservation.
-     if len(found)==1:found[0]['thumbnail']=thumbnail_data(image,box)
+     if len(found)==1 and found[0].get('name') and found[0].get('checkin'):found[0]['thumbnail']=thumbnail_data(image,box)
      rows.extend(found)
-    if rows:return output('\n'.join(parts),rows)
+    if rows and all(row.get('name') and row.get('checkin') for row in rows):return output('\n'.join(parts),rows)
+    outputs.extend(parts)
    # Booking cards place photos on the left. Try their text column first; fall back
    # to the whole image for other layouts. A successful pass is never discarded.
    pictures=[(image.crop((int(image.width*.29),0,image.width,image.height)),'text-side'),(image,'full')]
    for picture,name in pictures:
     if time.monotonic()>=deadline:break
-    try:text=recognize(picture,name)
+    try:text=layout_text if name=='full' and layout_text is not None else recognize(picture,name)
     except subprocess.TimeoutExpired:timed_out=True;continue
     outputs.append(text)
     rows=parse_reservations(text)
     dated_lines=sum(bool(re.search(r'\d[./]\s*\d{1,2}.*[~–—-].*\d[./]\s*\d{1,2}',line)) for line in text.splitlines())
     if rows and not any(row.get('needs_dates') for row in rows) and len(rows)>=dated_lines:return output(text)
    if outputs:
-    best=max(reversed(outputs),key=lambda text:len(parse_reservations(text)))
+    def quality(text):
+     return sum(2+sum(weight for key,weight in [('name',3),('checkin',4),('checkout',3),('site',2),('location',2),('price',1)] if row.get(key) not in (None,'')) for row in review_records(text))
+    best=max(reversed(outputs),key=quality)
     if best.strip() or not timed_out:return output(best)
    if timed_out:raise ValueError('사진 인식 시간이 초과됐습니다. 예약 내용 부분만 잘라 다시 선택해주세요.')
    return output('')

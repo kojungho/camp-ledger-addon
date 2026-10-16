@@ -2,7 +2,7 @@ import io,subprocess,unittest
 from unittest.mock import patch
 from PIL import Image,ImageDraw
 from werkzeug.datastructures import FileStorage
-from journal.reservation_import import image_text,parse_reservations,thumbnail_boxes
+from journal.reservation_import import image_text,parse_reservations,thumbnail_boxes,current_year,review_records
 TEXT='테스트 캠핑장\nA존-A01 · 2명\n일정 26.10.01(목)-26.10.03(토)'
 class OcrPipelineTest(unittest.TestCase):
  def photo(self):
@@ -35,3 +35,36 @@ class OcrPipelineTest(unittest.TestCase):
   stream=io.BytesIO();image.save(stream,'PNG');stream.seek(0)
   run.side_effect=[self.success('캠핑장'+str(i)+'\n예약일 : 2026.10.0'+str(i+1)+' (2박3일)\n예약정보 : A'+str(i)) for i in range(3)]
   result=image_text(FileStorage(stream=stream,filename='cards.png'),with_records=True);self.assertEqual(run.call_count,3);self.assertEqual(len(result['records']),3);self.assertTrue(all(r['thumbnail'].startswith('data:image/jpeg;base64,') for r in result['records']))
+
+ @patch('journal.reservation_import.subprocess.run')
+ def test_visit_receipt_recovers_bad_date_from_focused_crop(self,run):
+  from pathlib import Path
+  receipt='산너미목장 > ee\n관광농원,팜스테이 · 강원 평창군 미탄면\n481025\n오전 12:00 · 1번째 방문\nAD\n살반 캠핑 에어텐트 펌프\n내역\n산너미 차박\n총 금액 110,000원'
+  def recognize(args,**kwargs):
+   if args[2]!='stdout':
+    Path(args[2]+'.txt').write_text(receipt)
+    Path(args[2]+'.tsv').write_text('level\tblock_num\tpar_num\tline_num\tleft\ttop\twidth\theight\ttext\n5\t1\t1\t1\t40\t870\t140\t25\t1 번 째 방 문\n')
+    return self.success('')
+   self.assertEqual(args[args.index('--psm')+1],'7');self.assertEqual(args[args.index('-l')+1],'kor')
+   return self.success('4월 10일 금')
+  run.side_effect=recognize
+  stream=io.BytesIO();Image.new('RGB',(600,1280),'white').save(stream,'PNG');stream.seek(0)
+  result=image_text(FileStorage(stream=stream,filename='visit.png'),with_records=True)
+  self.assertEqual(run.call_count,2);row=result['records'][0]
+  self.assertEqual((row['name'],row['site'],row['checkin'],row['checkout']),('산너미목장','산너미 차박',f'{current_year()}-04-10',''))
+  self.assertEqual(row['location'],'강원 평창군 미탄면');self.assertEqual(row['price'],110000);self.assertNotIn('thumbnail',row)
+  self.assertIn('방문일 재인식',result['text'])
+
+ @patch('journal.reservation_import.subprocess.run')
+ def test_visit_receipt_keeps_read_date_when_focused_pass_times_out(self,run):
+  from pathlib import Path
+  receipt='산너미목장 >\n강원 평창군 미탄면\n4월 10일 금\n오전 12:00 · 1번째 방문\n내역\n산너미 차박\n총 금액 110,000원'
+  def recognize(args,**kwargs):
+   if args[2]=='stdout':raise subprocess.TimeoutExpired('tesseract',8)
+   Path(args[2]+'.txt').write_text(receipt)
+   Path(args[2]+'.tsv').write_text('level\tblock_num\tpar_num\tline_num\tleft\ttop\twidth\theight\ttext\n5\t1\t1\t1\t40\t870\t140\t25\t1 번 째 방 문\n')
+   return self.success('')
+  run.side_effect=recognize
+  stream=io.BytesIO();Image.new('RGB',(600,1280),'white').save(stream,'PNG');stream.seek(0)
+  result=image_text(FileStorage(stream=stream,filename='visit.png'),with_records=True)
+  self.assertEqual(run.call_count,2);self.assertEqual(result['records'][0]['checkin'],f'{current_year()}-04-10')
