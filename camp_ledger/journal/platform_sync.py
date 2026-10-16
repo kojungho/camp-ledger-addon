@@ -124,6 +124,15 @@ def preview(raw,records,history=()):
   rows=review_records(text);fields=captured_fields(card.get('fields'))
   if not rows and fields:rows=[{'name':'','site':'','checkin':'','checkout':'','needs_review':True}]
   if len(rows)==1:rows=[enrich_fields(rows[0],fields)]
+  if len(rows)==1 and not cancelled:
+   warnings=[]
+   if isinstance(card.get('fields'),dict) and card['fields'].get('booking_link_private') is True and fields.get('booking_url'):warnings.append('캠핑장 공개 주소가 없어 예약 상세 링크를 넣었습니다. 로그인이 필요할 수 있습니다.')
+   status=card.get('photo_status')
+   if status=='download_failed':warnings.append('사진 주소는 읽었지만 사진 파일을 가져오지 못했습니다.')
+   elif status=='limit':warnings.append('사진 읽기 제한에 도달했습니다. 이 예약만 다시 동기화해 확인해주세요.')
+   elif status=='partial':warnings.append('일부 사진을 가져오지 못했습니다.')
+   if warnings:rows[0]['review_warnings']=[*rows[0].get('review_warnings',[]),*warnings]
+
   if not rows:
    if not cancelled:continue
    rows=[{'name':'취소된 예약','notes':text,'checkin':'','checkout':''}]

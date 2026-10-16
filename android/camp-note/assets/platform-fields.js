@@ -31,8 +31,11 @@
    else if(!Object.values(labels).some(names=>new RegExp('^(?:'+names+')$').test(value)))result[key]=value;
    if(result[key]!==undefined)break;
   }
-  for(const anchor of el.querySelectorAll('a[href]')){
-   const label=text(anchor),raw=anchor.getAttribute('href')||'';let url;try{url=new URL(raw,location.href)}catch(ignored){continue}
+  const anchors=[...(el.matches?.('a[href],[data-url],[data-href]')?[el]:[]),...el.querySelectorAll('a[href]'),...el.querySelectorAll('[data-url],[data-href]')];let reservation='';
+  for(const anchor of anchors){
+   const label=text(anchor),raw=anchor.getAttribute('href')||anchor.getAttribute('data-url')||anchor.getAttribute('data-href')||'';let url;try{url=new URL(raw,location.href)}catch(ignored){continue}
+   const privateBooking=/(^|\.)naver\.com$/.test(url.hostname)&&/\/(?:my\/)?(?:bookings?|reservations?)\/\d+(?:\/|$)|\/my\/bookings?(?:\/|$)/i.test(url.pathname)&&/상세\s*보기|예약\s*(?:상세|내역|정보)/.test(label)&&!url.username&&!url.password&&/^https?:$/.test(url.protocol);
+   if(privateBooking){for(const key of [...url.searchParams.keys()])if(!/^(?:bookingId|bookingNo|reservationId|reservationNo|businessId|bizId)$/i.test(key))url.searchParams.delete(key);url.hash='';if(!reservation)reservation=url.href;continue}
    if(!/^https?:$/.test(url.protocol)||url.username||url.password||/취소|환불|결제|리뷰|후기|예약\s*(?:상세|내역)|로그인|플랫폼\s*홈/.test(label))continue;
    if(/\/my(?:\/|$)|\/member(?:\/|$)|\/reservations?(?:\/|$)|\/orders?(?:\/|$)|\/pay(?:ment)?(?:\/|$)|login|logout/i.test(url.pathname))continue;
    const map=/(^|\.)(?:map\.naver\.com|naver\.me|kko\.to|map\.kakao\.com)$/.test(url.hostname);
@@ -44,6 +47,7 @@
    for(const key of [...url.searchParams.keys()])if(!/^(?:id|seq|bizId|businessId|placeId|campsiteId|campsiteSeq|campId|campSeq|campingId|campingSeq|camp_seq|camping_seq|campingCode|campCode)$/i.test(key))url.searchParams.delete(key);
    url.hash='';if(map&&!result.map_url)result.map_url=url.href;else if(!map&&!result.booking_url)result.booking_url=url.href;
   }
+  if(!result.booking_url&&reservation){result.booking_url=reservation;result.booking_link_private=true}
   return result;
  }
  function enrich(card,el,detail=false){const name=card.text.match(/^캠핑장명:\s*(.+)$/m)?.[1]||'';card.fields={...fields(el,detail,name),...card.fields};return card}

@@ -152,3 +152,12 @@ class PlatformSyncTest(unittest.TestCase):
  def test_confirmed_cancellation_cannot_be_cleared_by_collector_metadata(self):
   raw=self.capture(text='캠핑장명: 숲 캠핑장\n예약번호: 9191919191\n입실일: 2026.10.01\n퇴실일: 2026.10.03\n예약이 취소되었습니다');raw['cards'][0]['cancelled']=False
   row=self.post('preview',raw).json['records'][0];self.assertTrue(row['cancelled']);self.assertEqual(self.post('commit',{'records':[row]}).status_code,400)
+
+ def test_naver_main_price_photo_and_private_detail_link_reach_review(self):
+  raw=self.capture(provider='naver',text='캠핑장명: 풍경소리캠핑장\n사이트명: D4 (호수뷰,차박 불가)\n입실일: 2026.05.23\n금액: 140,000원',media=[{'kind':'gallery','data':photo('blue')}])
+  raw['cards'][0].update(single_card=True,photo_status='ok',fields={'booking_url':'https://m.booking.naver.com/my/bookings/1172454330','booking_link_private':True})
+  row=self.post('preview',raw).json['records'][0]
+  self.assertEqual(row['price'],140000);self.assertEqual(row['checkout'],'');self.assertEqual(len(row['sync_media']),1)
+  self.assertEqual(row['booking_url'],raw['cards'][0]['fields']['booking_url']);self.assertTrue(any('로그인' in w for w in row['review_warnings']))
+  raw['cards'][0]['media']=[];raw['cards'][0]['photo_status']='download_failed'
+  row=self.post('preview',raw).json['records'][0];self.assertEqual(row['price'],140000);self.assertTrue(any('사진 파일' in w for w in row['review_warnings']))
