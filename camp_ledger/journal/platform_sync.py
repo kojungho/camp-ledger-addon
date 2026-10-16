@@ -82,6 +82,7 @@ def preview(raw,records,history=()):
  result=[];seen=set();already=raw.get('already_synced',0)
  if type(already) is not int or not 0<=already<=MAX_BOOKINGS:raise ValueError('동기화 제외 개수를 확인해주세요.')
  known={(r['provider'],r['sync_key']) for r in history}
+ known_text={(r['provider'],r.get('account',1),r['text_hash']) for r in history if r.get('text_hash')}
  for card in cards:
   if not isinstance(card,dict) or not isinstance(card.get('text'),str) or len(card['text'])>8000:raise ValueError('예약 화면 내용을 확인해주세요.')
   text=card['text']
@@ -100,8 +101,8 @@ def preview(raw,records,history=()):
    seen.add(key);existing=match_record(records,row,ref) if not cancelled else None
    complete=bool(row.get('name') and row.get('checkin') and row.get('checkout'))
    ref['source_key']=source_key(row,ref) if complete or ref['booking_id'] else ''
-   ref['text_hash']=hashlib.sha256(text.encode()).hexdigest() if len(rows)==1 and (complete or ref['booking_id']) else ''
-   if not cancelled and (existing or (ref['provider'],ref['source_key']) in known):already+=1;continue
+   ref['text_hash']=hashlib.sha256(text.encode()).hexdigest() if len(rows)==1 and (complete or ref['booking_id'] or card.get('single_card') is True and row.get('name') and row.get('checkin')) else ''
+   if not cancelled and (existing or (ref['provider'],ref['source_key']) in known or (ref['provider'],account,ref['text_hash']) in known_text):already+=1;continue
    merged={**row,'cancelled':cancelled}
    merged['platform_sync']=ref;merged['sync_existing']=None;merged['replace_cover']=False
    merged['sync_media']=[{'kind':p['kind'],'data':p['data']} for p in photos]

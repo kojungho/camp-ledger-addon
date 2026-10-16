@@ -33,6 +33,12 @@ class PlatformSyncTest(unittest.TestCase):
   raw=self.capture(provider='naver',text='캠핑장명: 하늘구니\n사이트명: 3사이트 캠핑장\n입실일: 5.3 일');raw['ignored_non_lodging']=True
   with patch('journal.reservation_import.current_year',return_value=2026):row=self.post('preview',raw).json['records'][0]
   self.assertEqual(row['name'],'하늘구니');self.assertEqual(row['site'],'3사이트 캠핑장');self.assertEqual(row['checkin'],'2026-05-03');self.assertEqual(row['checkout'],'')
+ def test_naver_partial_list_entry_remembers_history_after_user_fills_checkout(self):
+  raw=self.capture(provider='naver',text='캠핑장명: 하늘구니\n사이트명: 3사이트 캠핑장\n입실일: 2026.05.03');raw['cards'][0]['single_card']=True
+  row=self.post('preview',raw).json['records'][0];self.assertTrue(row['platform_sync']['text_hash']);self.assertEqual(row['checkout'],'')
+  row['checkout']='2026-05-05';self.assertEqual(self.post('commit',{'records':[row]}).status_code,200)
+  self.assertEqual(len(self.client.get('/api/platforms/state').json['naver']['text_hashes']),1)
+  repeated=self.post('preview',raw).json;self.assertEqual(repeated['records'],[]);self.assertEqual(repeated['already_synced'],1)
  def test_checkpoint_preview_reports_completed_boundary(self):
   raw=self.capture();raw.update(stopped_at_synced=True,already_synced=1,scan_reason='checkpoint',scan_truncated=False)
   result=self.post('preview',raw).json
