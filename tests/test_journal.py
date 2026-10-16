@@ -11,6 +11,11 @@ class JournalTest(unittest.TestCase):
   self.client=app.test_client();self.headers={'X-Camp-Request':'1'}
   with connection() as c:
    c.execute('DELETE FROM records');c.execute('DELETE FROM devices');c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(DEFAULTS),))
+ def test_calendar_choice_settings_roundtrip_and_invalid_size(self):
+  settings=self.client.get('/api/state').json['settings'];self.assertEqual(settings['calendar_choice'],{'width':220,'height':210,'font':14})
+  settings['calendar_choice']={'width':180,'height':160,'font':12};self.assertEqual(self.client.put('/api/settings',json=settings,headers=self.headers).status_code,200);self.assertEqual(self.client.get('/api/state').json['settings']['calendar_choice'],settings['calendar_choice'])
+  for key,value in [('width',159),('height',481),('font',9),('width',True)]:
+   bad=json.loads(json.dumps(settings));bad['calendar_choice'][key]=value;self.assertEqual(self.client.put('/api/settings',json=bad,headers=self.headers).status_code,400)
  def record(self,**extra):
   data={'name':'테스트 캠핑장','location':'강원도','price':120000,'checkin':'2026-10-01','checkout':'2026-10-03',**extra}
   r=self.client.post('/api/records',json=data,headers=self.headers);self.assertEqual(r.status_code,201);return r.json['id']

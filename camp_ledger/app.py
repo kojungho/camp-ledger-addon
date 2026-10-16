@@ -50,6 +50,7 @@ def normalize_settings(s):
     if not isinstance(floating,dict):raise ValueError('플로팅 버튼 설정을 확인해주세요.')
     for mode in ('pc','mobile'):
         floating.setdefault(mode,{'addScale':100,'addFont':14,'topScale':100,'topFont':24})
+    d.setdefault('calendarChoice',{'width':220,'height':210,'font':14})
     d.setdefault('defaultSort',{'key':'','direction':'desc'});d.setdefault('addButtonPosition','bottom-right');d.setdefault('addButtonLabel','물품 추가');d.setdefault('fieldLabels',{});d.setdefault('emptyText',{});d.setdefault('photoSize',42);d.setdefault('selectionEnabled',True);d.setdefault('selectionPcEnabled',d['selectionEnabled']);d.setdefault('selectionMobileEnabled',d['selectionEnabled'])
     mobile=d.setdefault('mobile',{})
     if not isinstance(mobile,dict):raise ValueError('모바일 화면 설정을 확인해주세요.')
@@ -236,6 +237,8 @@ def valid_settings(s):
     for key in ('categories','methods','buyers','purchase_types'):
         if not isinstance(s.get(key),list) or any(not isinstance(x,str) or not x.strip() for x in s[key]) or len(set(s[key]))!=len(s[key]): raise ValueError('목록 값을 확인해주세요.')
     d=s['display']
+    choice=d['calendarChoice']
+    if not isinstance(choice,dict) or set(choice)!=set(('width','height','font')) or any(type(choice[k]) is not int or not lo<=choice[k]<=hi for k,lo,hi in [('width',160,480),('height',120,480),('font',10,24)]):raise ValueError('달력 선택 목록은 너비 160~480px, 높이 120~480px, 글자 10~24px입니다.')
     floating=d['floating']
     if not isinstance(floating,dict) or set(floating)!=set(('pc','mobile')):raise ValueError('플로팅 버튼 화면 설정을 확인해주세요.')
     for values in floating.values():

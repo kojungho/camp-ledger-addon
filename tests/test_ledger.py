@@ -21,6 +21,11 @@ class LedgerTest(unittest.TestCase):
             c.execute('DELETE FROM imports')
             c.execute('DELETE FROM devices')
             c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(ledger.DEFAULT),))
+    def test_calendar_choice_settings_roundtrip_and_invalid_size(self):
+        settings=self.client.get('/api/state').json['settings'];self.assertEqual(settings['display']['calendarChoice'],{'width':220,'height':210,'font':14})
+        settings['display']['calendarChoice']={'width':180,'height':160,'font':12};self.assertEqual(self.client.put('/api/settings',json=settings,headers=self.headers).status_code,200);self.assertEqual(self.client.get('/api/state').json['settings']['display']['calendarChoice'],settings['display']['calendarChoice'])
+        for key,value in [('width',159),('height',481),('font',9),('width',True)]:
+            bad=json.loads(json.dumps(settings));bad['display']['calendarChoice'][key]=value;self.assertEqual(self.client.put('/api/settings',json=bad,headers=self.headers).status_code,400)
     def image(self):
         b=io.BytesIO();Image.new('RGB',(32,24),'green').save(b,'PNG');b.seek(0);return b
     def item(self,**extra):
