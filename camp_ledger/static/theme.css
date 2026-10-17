@@ -1,0 +1,37 @@
+.camp-theme-settings{padding:10px 12px;margin:0 0 14px;border:1px solid #dbe3d7;border-radius:10px;background:#f4f7ef}.camp-theme-settings>label{display:flex!important;flex-direction:row!important;align-items:center;gap:12px;margin:0!important}.camp-theme-settings label>span{font-weight:650;white-space:nowrap}.camp-theme-settings select{width:auto!important;max-width:100%;min-height:32px;padding:5px 9px;font-size:13px}.camp-theme-settings>p{margin:7px 0 0;font-size:11px;line-height:1.5;color:#637668}
+:root[data-camp-theme=dark]{color-scheme:dark;--green:#8ad0b2;--ink:#e2ebe5;--muted:#a4b7aa;--line:#35483e;--border:#35483e;--bg:#15211c;--theme-panel:#1e2d25;--theme-raised:#293c31;--theme-text:#e2ebe5;--theme-muted:#adbdaf;background:#15211c;color:var(--theme-text)}
+:root[data-camp-theme=dark] body{background:var(--bg);color:var(--theme-text)}
+:root[data-camp-theme=dark] :is(header,.sidebar,.records,.ledger,.stats article,.camp-card,.mobile-gear-card,dialog,.modal-footer,.dialog-head,#prefsActions,#editorActions,.pref-row,.settings-field-row,.settings-field-row>strong,.settings-field-header,.prefs-tabs,.display-setting-tabs,.settings-group,.settings-general,.camp-theme-settings){background:var(--theme-panel)!important;color:var(--theme-text)!important;border-color:var(--border)!important}
+:root[data-camp-theme=dark] :is(input,select,textarea,option){background-color:var(--theme-panel)!important;color:var(--theme-text)!important;border-color:var(--border)!important;accent-color:#8ad0b2}
+:root[data-camp-theme=dark] :is(input,textarea)::placeholder{color:#a1b2a5;opacity:1}
+:root[data-camp-theme=dark] :is(button,.button,.secondary,.header-settings,.export,.search,.display-checks label,.thumb-option,.photo-memo-label,.calendar-choice-head button,.camp-choice-head button){background-color:var(--theme-panel);color:var(--theme-text);border-color:var(--border)}
+:root[data-camp-theme=dark] :is(button,.button):hover{background-color:var(--theme-raised);color:var(--theme-text)}
+:root[data-camp-theme=dark] :is(.primary,.nav.active,nav button[aria-pressed=true],.calendar-days .selected,#stayDays .selected-day,.calendar-choice-list button.selected,.camp-choice-list>button[aria-selected=true],.cover-photo[aria-pressed=true],.prefs-tabs .active,.display-setting-tabs button[aria-selected=true],.floating-add,#add){background:#346e55!important;color:#f5fff8!important;border-color:#51876a!important}
+:root[data-camp-theme=dark] :is(.tabs .active,.mobile-card-sort button[aria-pressed=true],.stay-summary,.camp-card-book,.stats .stat-green,.brand-icon,.camp-card-placeholder,.camp-theme-settings,.chip,.category-pill,.stock-calculation,.import-intro,.dispose-toggle,.photo-add-card,.add-photo,.settings-field-more .form-grid){background:var(--theme-raised)!important;color:var(--theme-text)!important;border-color:var(--border)!important}
+:root[data-camp-theme=dark] :is(.tabs,.mobile-card-sort,.calendar-top>button,.camp-note,.photo-card,.calendar-days button:hover,#stayDays .between-days){background-color:var(--theme-raised);border-color:var(--border)}
+:root[data-camp-theme=dark] :is(a,.list-address,.sort-heading,.camp-card-title,.camp-card-address,.nav,.tabs button,.tabs button.active,.handle){color:#b2dfc6}
+:root[data-camp-theme=dark] :is(small,.hint,.quiet,.eyebrow,.intro p,.totals span,.pref-heading,.card-extra,.card-extra small,.camp-card-stay small,.card-layout figcaption,.readonly-photo figcaption,.page-heading p,.stats article>div,.stats small,.side-label,.side-bottom p,.camp-note small,.table-footer,.crumb,.private-dot,.setting-cell>span,.settings-field-more>summary,.camp-theme-settings>p,.mobile-card-fields dt,.field-label){color:var(--theme-muted)!important}
+:root[data-camp-theme=dark] :is(label,.pref-row label,.camp-card-stay,th,td){color:var(--theme-text)}
+:root[data-camp-theme=dark] :is(th,td,.toolbar,.modal-head,.modal-footer,.section-line,.table-footer,.camp-card-top,.settings-field-row,.detail-field,.camp-note){border-color:var(--border)!important}
+:root[data-camp-theme=dark] :is(thead,thead th,.tabs button span,.settings-table-scroll,.settings-field-table,.mobile-card-fields,.settings-group>summary){background-color:var(--theme-panel);color:var(--theme-text)}
+:root[data-camp-theme=dark] :is(tbody tr:hover,#table tbody tr:has([data-select-record]:checked),.pref-row.dragging){background-color:var(--theme-raised)!important}
+:root[data-camp-theme=dark] dialog::backdrop{background:#050b09b3}
+:root[data-camp-theme=dark] :is(.stay-pending,.status-badge.sold){background:#463c22;color:#f3dc97;border-color:#6b5a30}
+:root[data-camp-theme=dark] :is(.stay-active,.status-badge.owned){background:#244a37;color:#b8e7c5;border-color:#3b6a4e}
+:root[data-camp-theme=dark] :is(.status-badge.disposed,.status-badge.not-owned,.input-error){background:#4b2c2a!important;color:#f1bfb4!important;border-color:#986158!important}
+:root[data-camp-theme=dark] :is(.calendar-week,.stay-weekdays,.calendar-weekdays,.calendar-choice-head,.camp-choice-head){color:var(--theme-muted)}
+:root[data-camp-theme=dark] .camp-map-name{background-color:var(--theme-panel);color:var(--theme-text);border-color:var(--border)}
+:root[data-camp-theme=dark] .camp-map-boxless .camp-map-name{background:transparent}
+:root[data-camp-theme=dark] .camp-map-marker{background:transparent;color:#285345}
+:root[data-camp-theme=dark] :is(.camp-card-title,.camp-card-address,.list-address,.sort-heading,.rating-star){background:transparent}
+/* Photos, map tiles and original documents retain their original colours. */
+:root[data-camp-theme=dark] :is(.prefs-tabs,.display-setting-tabs) button[aria-selected=false]{background:var(--theme-raised)!important;color:var(--theme-text)!important;border-color:var(--border)!important}
+:root[data-camp-theme=dark] :is(.settings-group>summary,.settings-field-more>summary,.calendar-choice-settings h3,.settings-heading){color:#c3e6cf!important}
+:root[data-camp-theme=dark] :is(.settings-field-header>span,.settings-field-row>strong,.pref-row>strong){color:var(--theme-text)!important;background-color:var(--theme-panel)!important}
+:root[data-camp-theme=dark] .leaflet-control a{color:#234e43}
+:root[data-camp-theme=dark] :is(.leaflet-popup-content-wrapper,.leaflet-popup-tip){background:var(--theme-panel);color:var(--theme-text)}
+:root[data-camp-theme=dark] #stayDays button:not(.selected-day):not(.between-days),:root[data-camp-theme=dark] #calendar-days button:not(.selected){background:var(--theme-raised)!important;color:var(--theme-text)!important}
+:root[data-camp-theme=dark] #staySelection{color:var(--theme-muted);border-color:var(--border)}
+:root[data-camp-theme=dark] :is(#reservationScan,.reservation-review,.reservation-raw,.reservation-unassigned,.ali-share,.app-install-guide,.remote-notice,.column-fine-settings[open],#mobile-pair-result){background:var(--theme-raised)!important;color:var(--theme-text)!important;border-color:var(--border)!important}
+:root[data-camp-theme=dark] .mobile-field>div{color:var(--theme-text)!important}
+:root[data-camp-theme=dark] .mobile-field>span{color:var(--theme-muted)!important}
