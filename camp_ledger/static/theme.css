@@ -35,3 +35,5 @@
 :root[data-camp-theme=dark] :is(#reservationScan,.reservation-review,.reservation-raw,.reservation-unassigned,.ali-share,.app-install-guide,.remote-notice,.column-fine-settings[open],#mobile-pair-result){background:var(--theme-raised)!important;color:var(--theme-text)!important;border-color:var(--border)!important}
 :root[data-camp-theme=dark] .mobile-field>div{color:var(--theme-text)!important}
 :root[data-camp-theme=dark] .mobile-field>span{color:var(--theme-muted)!important}
+
+:root[data-camp-theme=dark] :is(#gear-table .not-owned-divider td,.mobile-gear-list>.not-owned-divider){background:var(--theme-raised)!important;color:var(--theme-text)!important;border-color:var(--border)!important}
