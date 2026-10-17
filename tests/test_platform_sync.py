@@ -46,6 +46,16 @@ class PlatformSyncTest(unittest.TestCase):
   self.assertEqual(self.post('commit',{'records':[row]}).status_code,200)
   self.assertEqual(len(self.client.get('/api/platforms/state').json['naver']['text_hashes']),1)
   repeated=self.post('preview',raw).json;self.assertEqual(repeated['records'],[]);self.assertEqual(repeated['already_synced'],1)
+ def test_sync_copies_selected_layout_from_matching_source(self):
+  source={'name':'별 캠핑장','location':'경기 가평군','platform':'캠핏','checkin':'2026-01-01','checkout':'2026-01-02'}
+  sid=self.client.post('/api/records',json=source,headers=self.headers).json['id']
+  for color in ('red','blue'):
+   image=io.BytesIO();Image.new('RGB',(20,20),color).save(image,'PNG');image.seek(0)
+   self.client.post('/api/records/'+sid+'/photos/layout',data={'photos':(image,color+'.png')},headers=self.headers)
+  chosen=next(p for p in self.client.get('/api/state').json['records'][0]['photos'] if p['name']=='blue.png');self.client.put('/api/records/'+sid+'/cover',json={'photo_id':chosen['id']},headers=self.headers)
+  raw=self.capture(text='캠핑장명: 별 캠핑장\n예약번호: 9191919191\n입실일: 2026.10.29');row=self.post('preview',raw).json['records'][0];row.update(location=source['location'],inherit_from=sid)
+  result=self.post('commit',{'records':[row]});self.assertEqual(result.status_code,200);copied=next(r for r in self.client.get('/api/state').json['records'] if r['id']==result.json['added'][0])
+  self.assertEqual(len(copied['photos']),1);self.assertEqual(copied['photos'][0]['name'],'blue.png');self.assertEqual(copied['photos'][0]['is_cover'],1);self.assertNotEqual(copied['photos'][0]['id'],chosen['id'])
  def test_checkpoint_preview_reports_completed_boundary(self):
   raw=self.capture();raw.update(stopped_at_synced=True,already_synced=1,scan_reason='checkpoint',scan_truncated=False)
   result=self.post('preview',raw).json

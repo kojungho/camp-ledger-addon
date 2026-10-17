@@ -271,18 +271,17 @@ def save_with_photos():
    elif source:
     for pid,text in keep_values.items():
      photo=existing[pid];newid=str(uuid.uuid4());photo_ids[pid]=newid;path=MEDIA/(newid+'.jpg');written.append(path);shutil.copyfile(MEDIA/(pid+'.jpg'),path)
-     c.execute('INSERT INTO photos(id,record_id,kind,name,memo) VALUES(?,?,?,?,?)',(newid,target,photo['kind'],photo['name'],text))
+     c.execute('INSERT INTO photos(id,record_id,kind,name,memo,is_cover) VALUES(?,?,?,?,?,?)',(newid,target,photo['kind'],photo['name'],text,photo['is_cover']))
    for pid,kind,name,content,text,field in staged:
     photo_ids[field]=pid
     path=MEDIA/(pid+'.jpg');written.append(path);path.write_bytes(content)
     c.execute('INSERT INTO photos(id,record_id,kind,name,memo) VALUES(?,?,?,?,?)',(pid,target,kind,name,text))
-   if 'cover' in raw:
-    cover=raw['cover']
-    if cover is not None and (not isinstance(cover,str) or cover not in photo_ids):raise ValueError('대표 사진을 확인해주세요.')
-    if cover is not None:
-     pid=photo_ids[cover]
-     if not c.execute("SELECT 1 FROM photos WHERE id=? AND record_id=? AND kind='gallery'",(pid,target)).fetchone():raise ValueError('갤러리 사진만 대표로 지정할 수 있습니다.')
-    c.execute('UPDATE photos SET is_cover=0 WHERE record_id=?',(target,))
+   for cover_key,kind in (('cover','gallery'),('layout_cover','layout')):
+    if cover_key not in raw:continue
+    cover=raw[cover_key]
+    if cover is not None and (not isinstance(cover,str) or cover not in photo_ids):raise ValueError('대표 사진·배치도를 확인해주세요.')
+    if cover is not None and not c.execute('SELECT 1 FROM photos WHERE id=? AND record_id=? AND kind=?',(photo_ids[cover],target,kind)).fetchone():raise ValueError('해당 종류의 사진만 대표로 지정할 수 있습니다.')
+    c.execute('UPDATE photos SET is_cover=0 WHERE record_id=? AND kind=?',(target,kind))
     if cover is not None:c.execute('UPDATE photos SET is_cover=1 WHERE id=?',(photo_ids[cover],))
  except Exception:
   for path in written:path.unlink(missing_ok=True)
@@ -330,8 +329,9 @@ def set_cover(ident):
  raw=request.get_json(silent=True)
  if not isinstance(raw,dict) or not isinstance(raw.get('photo_id'),str):raise ValueError('대표 사진을 선택해주세요.')
  with connection() as c:
-  if not c.execute("SELECT 1 FROM photos WHERE id=? AND record_id=? AND kind='gallery'",(raw['photo_id'],ident)).fetchone():raise ValueError('이 기록의 갤러리 사진만 선택할 수 있습니다.')
-  c.execute('UPDATE photos SET is_cover=0 WHERE record_id=?',(ident,));c.execute('UPDATE photos SET is_cover=1 WHERE id=?',(raw['photo_id'],))
+  photo=c.execute('SELECT kind FROM photos WHERE id=? AND record_id=?',(raw['photo_id'],ident)).fetchone()
+  if not photo:raise ValueError('이 기록의 사진·배치도만 선택할 수 있습니다.')
+  c.execute('UPDATE photos SET is_cover=0 WHERE record_id=? AND kind=?',(ident,photo['kind']));c.execute('UPDATE photos SET is_cover=1 WHERE id=?',(raw['photo_id'],))
  return jsonify(ok=True)
 @app.put('/api/photos/<pid>')
 def photo_memo(pid):
@@ -413,11 +413,12 @@ def import_commit():
      if any(not normal(body.get(key)) or normal(body.get(key))!=normal(previous.get(key)) for key in ('name','location','platform')):raise ValueError('기존 기록과 캠핑장명·주소·플랫폼이 다릅니다. 캠핑장을 다시 검색해주세요.')
      photos=[dict(p) for p in c.execute('SELECT * FROM photos WHERE record_id=?',(source,))]
      cover=next((p for p in photos if p['kind']=='gallery' and p['is_cover']),next((p for p in photos if p['kind']=='gallery'),None))
-     inherited=[p for p in photos if p['kind']=='layout' or p==cover]
+     layout=next((p for p in photos if p['kind']=='layout' and p['is_cover']),next((p for p in photos if p['kind']=='layout'),None))
+     inherited=[p for p in photos if p==layout or p==cover]
     ident=uuid.uuid4().hex;c.execute('INSERT INTO records VALUES(?,?)',(ident,json.dumps(body,ensure_ascii=False)));existing.add(key);added.append(ident)
     for photo in inherited:
      pid=uuid.uuid4().hex;path=MEDIA/(pid+'.jpg');written.append(path);shutil.copyfile(MEDIA/(photo['id']+'.jpg'),path)
-     c.execute('INSERT INTO photos(id,record_id,kind,name,memo,is_cover) VALUES(?,?,?,?,?,?)',(pid,ident,photo['kind'],photo['name'],photo['memo'],int(photo['kind']=='gallery' and not thumbnail)))
+     c.execute('INSERT INTO photos(id,record_id,kind,name,memo,is_cover) VALUES(?,?,?,?,?,?)',(pid,ident,photo['kind'],photo['name'],photo['memo'],int(photo['kind']=='layout' or not thumbnail)))
     if thumbnail:
      pid=uuid.uuid4().hex;path=MEDIA/(pid+'.jpg');written.append(path);path.write_bytes(thumbnail)
      c.execute('INSERT INTO photos(id,record_id,kind,name,memo,is_cover) VALUES(?,?,?,?,?,1)',(pid,ident,'gallery',body['name']+' 예약 사진.jpg',''))

@@ -12,3 +12,5 @@ records[0].checkin='2026-10-01';records[0].checkout='2026-10-12';records[1].chec
 console.log('List: three-step sorting, stable default order, platform search and direct photo enlargement passed.');
 records[0].photos[1].is_cover=1;const coverCell=c.cell(records[0],'photos');assert.ok(coverCell.includes('photos/second'));assert.ok(!coverCell.includes('photos/photo-id'),'PC list shows the selected cover only');
 assert.equal((c.cell({rating:4},'rating').match(/⭐️/g)||[]).length,4);assert.equal(c.cell({},'rating'),'—');
+
+records[0].photos.push({id:'chosen-layout',kind:'layout',is_cover:1});const layoutCell=c.cell(records[0],'layout');assert.equal((layoutCell.match(/<img /g)||[]).length,1);assert.ok(layoutCell.includes('photos/chosen-layout'));assert.ok(!layoutCell.includes('photos/layout\"'));

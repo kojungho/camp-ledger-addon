@@ -169,13 +169,24 @@ class JournalTest(unittest.TestCase):
   photos=self.client.get('/api/state').json['records'][0]['photos'];chosen=photos[1]['id']
   self.assertEqual(self.client.put('/api/records/'+source+'/cover',json={'photo_id':chosen},headers=self.headers).status_code,200)
   record=self.client.get('/api/state').json['records'][0];self.assertEqual([p['id'] for p in record['photos'] if p['is_cover']],[chosen])
-  self.assertEqual(self.client.put('/api/records/'+source+'/cover',json={'photo_id':photos[2]['id']},headers=self.headers).status_code,400)
+  self.assertEqual(self.client.put('/api/records/'+source+'/cover',json={'photo_id':photos[2]['id']},headers=self.headers).status_code,200)
   foreign=self.record(name='다른 캠핑장');self.assertEqual(self.client.put('/api/records/'+foreign+'/cover',json={'photo_id':chosen},headers=self.headers).status_code,400)
   self.assertEqual(self.client.put('/api/records/'+source+'/cover',json={'photo_id':chosen}).status_code,403)
   raw={'fields':{'name':record['name'],'location':record['location'],'platform':record['platform'],'checkin':'2026-12-01','checkout':'2026-12-03'},'clone_from':source,'keep':[{'id':chosen,'memo':'대표'},{'id':photos[2]['id']}],'cover':chosen}
   response=self.client.post('/api/records/save',data={'record':json.dumps(raw)},headers=self.headers);self.assertEqual(response.status_code,201)
-  copy=next(r for r in self.client.get('/api/state').json['records'] if r['id']==response.json['id']);covers=[p for p in copy['photos'] if p['is_cover']];self.assertEqual(len(covers),1);self.assertNotEqual(covers[0]['id'],chosen);self.assertEqual(covers[0]['kind'],'gallery')
+  copy=next(r for r in self.client.get('/api/state').json['records'] if r['id']==response.json['id']);covers=[p for p in copy['photos'] if p['is_cover']];self.assertEqual({p['kind'] for p in covers},{'gallery','layout'});self.assertTrue(all(p['id'] not in (chosen,photos[2]['id']) for p in covers))
   self.client.delete('/api/records/'+copy['id'],headers=self.headers);self.assertTrue((MEDIA/(chosen+'.jpg')).exists())
+ def test_layout_cover_save_independent_from_gallery_and_atomic(self):
+  raw={'fields':{'name':'배치도 대표 지정'},'uploads':[{'field':'g','kind':'gallery'},{'field':'l1','kind':'layout'},{'field':'l2','kind':'layout'}],'cover':'g','layout_cover':'l2'}
+  def image(color):
+   out=io.BytesIO();Image.new('RGB',(20,20),color).save(out,'PNG');out.seek(0);return out
+  result=self.client.post('/api/records/save',data={'record':json.dumps(raw),'g':(image('red'),'g.png'),'l1':(image('green'),'l1.png'),'l2':(image('blue'),'l2.png')},headers=self.headers);self.assertEqual(result.status_code,201)
+  ident=result.json['id'];record=self.client.get('/api/state').json['records'][0];byname={p['name']:p for p in record['photos']}
+  self.assertEqual({p['name'] for p in record['photos'] if p['is_cover']},{'g.png','l2.png'})
+  self.assertEqual(self.client.put('/api/records/'+ident+'/cover',json={'photo_id':byname['l1.png']['id']},headers=self.headers).status_code,200)
+  record=self.client.get('/api/state').json['records'][0];self.assertEqual({p['name'] for p in record['photos'] if p['is_cover']},{'g.png','l1.png'})
+  bad={'id':ident,'fields':{'name':'실패'},'keep':[{'id':p['id']} for p in record['photos']],'cover':byname['g.png']['id'],'layout_cover':byname['g.png']['id']}
+  self.assertEqual(self.client.post('/api/records/save',data={'record':json.dumps(bad)},headers=self.headers).status_code,400);self.assertEqual(self.client.get('/api/state').json['records'][0],record)
  def test_uploaded_cover_and_invalid_cover_rollback(self):
   image=io.BytesIO();Image.new('RGB',(10,10),'red').save(image,'PNG');image.seek(0)
   raw={'fields':{'name':'대표 업로드'},'uploads':[{'field':'pic','kind':'gallery'}],'cover':'pic'}

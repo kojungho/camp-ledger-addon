@@ -1,5 +1,5 @@
 """Explicit platform imports. Only supplied page text/images are read; no login crawl."""
-import base64,binascii,hashlib,io,json,re,uuid
+import base64,binascii,hashlib,io,json,re,uuid,shutil,unicodedata
 from datetime import datetime,timezone
 from PIL import Image,ImageOps,UnidentifiedImageError
 from .reservation_import import review_records,identity,partial_fields
@@ -168,12 +168,14 @@ def commit(raw,connection,clean,reject_duplicate,media_root):
   if fields.get('platform')!=PROVIDERS[ref['provider']]:raise ValueError('연결한 플랫폼과 예약 플랫폼이 다릅니다.')
   if not fields.get('checkin'):raise ValueError('동기화할 예약의 입실일을 선택해주세요.')
   if type(row.get('replace_cover',False)) is not bool:raise ValueError('대표 사진 선택을 확인해주세요.')
-  prepared.append((fields,ref,media_list(row.get('sync_media',[])),row.get('replace_cover',False)))
+  source=row.get('inherit_from')
+  if source is not None and (not isinstance(source,str) or len(source)>80):raise ValueError('가져올 기존 기록을 확인해주세요.')
+  prepared.append((fields,ref,media_list(row.get('sync_media',[])),row.get('replace_cover',False),source))
  written=[];added=[];updated=[];photos_added=0;skipped=0
  try:
   with connection() as c:
    c.execute('BEGIN IMMEDIATE')
-   for fields,ref,photos,replace in prepared:
+   for fields,ref,photos,replace,source in prepared:
     records=[{**json.loads(r['body']),'id':r['id']} for r in c.execute('SELECT * FROM records')]
     old=match_record(records,fields,ref);key=ref['source_key'] or source_key(fields,ref)
     if old or c.execute('SELECT 1 FROM platform_sync_history WHERE provider=? AND sync_key=?',(ref['provider'],key)).fetchone():skipped+=1;continue
@@ -182,6 +184,17 @@ def commit(raw,connection,clean,reject_duplicate,media_root):
     body={**fields,'platform_ref':ref}
     c.execute('INSERT INTO records VALUES(?,?)',(ident,json.dumps(body,ensure_ascii=False)));added.append(ident)
     c.execute('INSERT INTO platform_sync_history(provider,sync_key,booking_id,text_hash,synced_at,account) VALUES(?,?,?,?,?,?)',(ref['provider'],key,ref['booking_id'],ref['text_hash'],datetime.now(timezone.utc).isoformat(),ref['account']))
+    if source:
+     original=next((r for r in records if r['id']==source),None)
+     normal=lambda value:re.sub(r'\s+',' ',unicodedata.normalize('NFKC',str(value or '')).strip())
+     if not original or any(not normal(fields.get(k)) or normal(fields.get(k))!=normal(original.get(k)) for k in ('name','location','platform')):raise ValueError('기존 기록과 캠핑장명·주소·플랫폼을 확인해주세요.')
+     inherited=[dict(p) for p in c.execute('SELECT * FROM photos WHERE record_id=?',(source,))]
+     for kind in ('gallery','layout'):
+      if kind=='gallery' and any(p['kind']=='gallery' for p in photos):continue
+      selected=next((p for p in inherited if p['kind']==kind and p['is_cover']),next((p for p in inherited if p['kind']==kind),None))
+      if selected:
+       pid=uuid.uuid4().hex;path=media_root/(pid+'.jpg');written.append(path);shutil.copyfile(media_root/(selected['id']+'.jpg'),path)
+       c.execute('INSERT INTO photos(id,record_id,kind,name,memo,is_cover) VALUES(?,?,?,?,?,1)',(pid,ident,kind,selected['name'],selected['memo']));photos_added+=1
     current=[dict(p) for p in c.execute('SELECT * FROM photos WHERE record_id=?',(ident,))]
     hashes={}
     for p in current:

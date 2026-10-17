@@ -22,8 +22,8 @@
    row.inherit_from=record?.id||null;
    const preview=card.querySelector('[data-review-inherited]');preview.replaceChildren();
    if(!record)return;
-   const photos=record.photos||[],cover=photos.find(p=>p.kind==='gallery'&&p.is_cover)||photos.find(p=>p.kind==='gallery');
-   for(const photo of photos.filter(p=>p.kind==='layout'||(!row.thumbnail&&p===cover))){
+   const photos=record.photos||[],cover=photos.find(p=>p.kind==='gallery'&&p.is_cover)||photos.find(p=>p.kind==='gallery'),layout=photos.find(p=>p.kind==='layout'&&p.is_cover)||photos.find(p=>p.kind==='layout');
+   for(const photo of photos.filter(p=>p===layout||(!row.thumbnail&&p===cover))){
     const figure=document.createElement('figure'),image=document.createElement('img'),caption=document.createElement('figcaption');image.src='photos/'+photo.id;image.alt=photo.kind==='layout'?'배치도':'대표 사진';caption.textContent=image.alt;figure.append(image,caption);preview.append(figure);
    }
   });
