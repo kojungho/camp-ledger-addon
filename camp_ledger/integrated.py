@@ -22,6 +22,8 @@ def combined_app(ledger,channel):
 
 def install_integration(ledger,mobile,connection,get_settings):
  ledger.config['CAMP_STORE']=(connection,get_settings,'/camp-ledger/')
+ from swim_proxy import install_swim_proxy
+ install_swim_proxy(ledger)
  @ledger.get('/hub')
  def hub():return ledger.send_static_file('hub.html')
  @ledger.post('/api/integration/import-journal')
