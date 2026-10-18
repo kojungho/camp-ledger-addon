@@ -1,0 +1,22 @@
+{
+  "camfit": {
+    "source": "https://play.google.com/store/apps/details?id=kr.co.camfit.app",
+    "asset": "https://play-lh.googleusercontent.com/v7nLY_hi8eJ57xA_NmTHld8Dqa2DnX7YNsoC4FuHjX_pvwJ3CmnCoOu5GcXCRP_G_Pb9LTwBXvGvwJN27c8iiO4=w240-h480",
+    "sha256": "2d8c2013a765c06f12d41ac08f89bbddc21f40c230e488a10cb6dd16e541350e"
+  },
+  "thankq": {
+    "source": "https://play.google.com/store/apps/details?id=com.habb.thankq",
+    "asset": "https://play-lh.googleusercontent.com/XLsTKXnIxBentmDJZvy1M8_-HD7ddNtuw-S0UzECtBaPCfGwonKydSGif_7iQF7U69sBdRqEV-0QFjbJyTI_370=w240-h480",
+    "sha256": "928193bbd87b6663da3019aee9a550c19b69f71dee5e7bc0251654a8f9af9173"
+  },
+  "campingtalk": {
+    "source": "https://www.campingtalk.me/",
+    "asset": "https://cdn.campingtalk.net/local/images/favicon/web/favicon-96.png",
+    "sha256": "0aa30d5536fa1f3f4b20c7f700d747e0408bea9c13232ba1727ca891824800a3"
+  },
+  "naver": {
+    "source": "https://www.naver.com/",
+    "asset": "https://s.pstatic.net/static/www/nFavicon96.png",
+    "sha256": "4ce9f6bffb9673ce818a6d9a0a1c8db61625f1220e6d7b5762a5c4166e1f42e2"
+  }
+}

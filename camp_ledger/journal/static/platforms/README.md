@@ -1,0 +1,1 @@
+Platform icons are unmodified official service/app icons, used solely to identify the reservation platform alongside its stored name. Sources and checksums are recorded in sources.json. Retrieved 2026-10-18. All trademarks belong to their respective owners.

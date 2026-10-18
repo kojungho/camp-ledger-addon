@@ -144,3 +144,5 @@ body>header{border-bottom:0}
 @media(max-width:700px){.camp-card-book{box-sizing:border-box;display:flex;align-items:center;justify-content:center;height:var(--camp-booking-height,auto)}}
 /* Field font settings are exact sizes, including inherited defaults and labels. */
 @media(max-width:700px){.camp-card-title,.camp-card-address,.card-extra small,.camp-card-stay small{font-size:inherit}}
+
+.platform-identity{display:inline-flex;align-items:center;gap:8px;max-width:100%;vertical-align:middle}.platform-identity>.platform-logo{display:block;flex:0 0 28px;width:28px;height:28px;object-fit:contain;border-radius:7px;background:#fff;border:1px solid #dce3dc}.platform-identity>span{min-width:0;overflow-wrap:anywhere}
