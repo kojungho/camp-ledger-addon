@@ -66,6 +66,7 @@ public class MainActivity extends Activity {
         @JavascriptInterface public String readReservationClipboard(){
             try{ClipboardManager clipboard=(ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE);if(clipboard==null||!clipboard.hasPrimaryClip())return "";ClipData clip=clipboard.getPrimaryClip();if(clip==null||clip.getItemCount()==0)return "";CharSequence value=clip.getItemAt(0).getText();if(value==null)return "";String text=value.toString();return text.length()>10000?text.substring(0,10000):text;}catch(Exception unavailable){return "";}
         }
+        @JavascriptInterface public String getSystemTheme(){return (getResources().getConfiguration().uiMode&Configuration.UI_MODE_NIGHT_MASK)==Configuration.UI_MODE_NIGHT_YES?"dark":"light";}
         @JavascriptInterface public int getPlatformSyncVersion(){return 9;}
         @JavascriptInterface public void openPlatform(String provider){openPlatformIncremental(provider,"{}");}
         @JavascriptInterface public void openPlatformIncremental(String provider,String history){openPlatformAccount(provider,1,history);}
@@ -109,7 +110,7 @@ public class MainActivity extends Activity {
     }
     private void applySystemBars(){
         boolean dark=(getResources().getConfiguration().uiMode&Configuration.UI_MODE_NIGHT_MASK)==Configuration.UI_MODE_NIGHT_YES;
-        int background=dark?Color.rgb(23,37,31):Color.rgb(250,251,247);
+        int background=dark?Color.rgb(16,18,20):Color.rgb(250,251,247);
         getWindow().setBackgroundDrawable(new ColorDrawable(background));
         View decor=getWindow().getDecorView();decor.setBackgroundColor(background);
         getWindow().setStatusBarColor(background);getWindow().setNavigationBarColor(background);
@@ -117,8 +118,9 @@ public class MainActivity extends Activity {
         if(Build.VERSION.SDK_INT>=30){WindowInsetsController controller=getWindow().getInsetsController();if(controller!=null){int mask=WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS|WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;controller.setSystemBarsAppearance(dark?0:mask,mask);}}
         else{int flags=decor.getSystemUiVisibility(),mask=View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;decor.setSystemUiVisibility(dark?flags&~mask:flags|mask);}
     }
-    @Override public void onConfigurationChanged(Configuration configuration){super.onConfigurationChanged(configuration);applySystemBars();}
-    @Override public void onWindowFocusChanged(boolean focused){super.onWindowFocusChanged(focused);if(focused)applySystemBars();}
+    @Override public void onConfigurationChanged(Configuration configuration){super.onConfigurationChanged(configuration);applySystemBars();notifySystemTheme();}
+    @Override public void onWindowFocusChanged(boolean focused){super.onWindowFocusChanged(focused);if(focused){applySystemBars();notifySystemTheme();}}
+    private void notifySystemTheme(){if(web==null)return;web.evaluateJavascript("(function update(w){try{if(w.CampTheme)w.CampTheme.refreshSystemTheme();w.document.querySelectorAll('iframe').forEach(function(f){if(f.contentWindow)update(f.contentWindow);});}catch(ignored){}})(window)",null);}
     private boolean openMappingUri(Uri uri){
         String fallback=null;Uri destination=uri;
         try{if("intent".equals(uri.getScheme())){Intent parsed=Intent.parseUri(uri.toString(),Intent.URI_INTENT_SCHEME);destination=parsed.getData();fallback=parsed.getStringExtra("browser_fallback_url");}}catch(Exception error){return false;}
@@ -173,13 +175,14 @@ public class MainActivity extends Activity {
         Button open=new Button(this);open.setText("캠핑 노트 연결");open.setOnClickListener(v->{String value=entry.getText().toString().trim();if(!value.matches("[A-Za-z0-9_-]{40,100}")){entry.setError("캠핑 노트에서 만든 연결키를 붙여넣어주세요.");return;}try{saveKey(value);key=value;showLedger();}catch(Exception e){entry.setError("연결 정보를 저장하지 못했습니다.");}});layout.addView(open);entry.setVisibility(View.GONE);open.setVisibility(View.GONE);Button manual=new Button(this);manual.setText("연결키 직접 입력 (고급)");manual.setOnClickListener(v->{entry.setVisibility(View.VISIBLE);open.setVisibility(View.VISIBLE);manual.setVisibility(View.GONE);});layout.addView(manual);setContentView(layout);
     }
     private void showLedger() {
-        if(web!=null)web.destroy();web=new WebView(this);web.setBackgroundColor(Color.rgb(246,247,242));
+        if(web!=null)web.destroy();web=new WebView(this);web.setBackgroundColor((getResources().getConfiguration().uiMode&Configuration.UI_MODE_NIGHT_MASK)==Configuration.UI_MODE_NIGHT_YES?Color.rgb(16,18,20):Color.rgb(246,247,242));
         web.setOnApplyWindowInsetsListener((v,insets)->{
             int left=insets.getSystemWindowInsetLeft(),top=insets.getSystemWindowInsetTop(),right=insets.getSystemWindowInsetRight(),bottom=insets.getSystemWindowInsetBottom();
             if(Build.VERSION.SDK_INT>=30){android.graphics.Insets bars=insets.getInsets(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout());android.graphics.Insets keyboard=insets.getInsets(WindowInsets.Type.ime());left=bars.left;top=bars.top;right=bars.right;bottom=Math.max(bars.bottom,keyboard.bottom);}
             ViewGroup.LayoutParams raw=v.getLayoutParams();if(raw instanceof ViewGroup.MarginLayoutParams){ViewGroup.MarginLayoutParams params=(ViewGroup.MarginLayoutParams)raw;if(params.leftMargin!=left||params.topMargin!=top||params.rightMargin!=right||params.bottomMargin!=bottom){params.setMargins(left,top,right,bottom);v.setLayoutParams(params);}}return insets;
         });
-        WebSettings settings=web.getSettings();settings.setJavaScriptEnabled(true);settings.setDomStorageEnabled(true);settings.setAllowFileAccess(false);settings.setAllowContentAccess(true);settings.setGeolocationEnabled(false);settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);settings.setSafeBrowsingEnabled(true);
+        web.setForceDarkAllowed(false);
+        WebSettings settings=web.getSettings();if(Build.VERSION.SDK_INT>=33)settings.setAlgorithmicDarkeningAllowed(false);else settings.setForceDark(WebSettings.FORCE_DARK_OFF);settings.setJavaScriptEnabled(true);settings.setDomStorageEnabled(true);settings.setAllowFileAccess(false);settings.setAllowContentAccess(true);settings.setGeolocationEnabled(false);settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);settings.setSafeBrowsingEnabled(true);
         settings.setUserAgentString(settings.getUserAgentString()+" CampsiteJournalAndroid/"+appVersion());
         web.addJavascriptInterface(new PhotoPickerBridge(false),"CampsiteJournalNative");
         web.addJavascriptInterface(new PhotoPickerBridge(true),"CampLedgerNative");
@@ -189,7 +192,7 @@ public class MainActivity extends Activity {
                 Uri uri=request.getUrl();if(openMappingUri(uri))return true;if(!request.isForMainFrame()){return !("https".equals(uri.getScheme())&&(("ha.badara.co.kr".equals(uri.getHost())&&(uri.getPath().startsWith("/campsite-journal/")||uri.getPath().startsWith("/camp-ledger/")))||"postcode.map.kakao.com".equals(uri.getHost())||"postcode.map.daum.net".equals(uri.getHost())||"www.openstreetmap.org".equals(uri.getHost()))); }if("https".equals(uri.getScheme())&&"ha.badara.co.kr".equals(uri.getHost())&&(uri.getPath().startsWith("/campsite-journal/")||uri.getPath().startsWith("/camp-ledger/")))return false;
                 try{startActivity(new Intent(Intent.ACTION_VIEW,uri));}catch(Exception ignored){}return true;
             }
-            @Override public void onPageFinished(WebView view,String url){deliverPlatformPayload();}
+            @Override public void onPageFinished(WebView view,String url){notifySystemTheme();deliverPlatformPayload();}
             @Override public void onReceivedError(WebView view,WebResourceRequest request,WebResourceError error){if(request.isForMainFrame())Toast.makeText(MainActivity.this,"기록에 연결하지 못했습니다. 인터넷 연결을 확인해주세요.",Toast.LENGTH_LONG).show();}
         });
         web.setWebChromeClient(new WebChromeClient(){
