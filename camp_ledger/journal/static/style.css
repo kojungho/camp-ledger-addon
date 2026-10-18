@@ -146,3 +146,6 @@ body>header{border-bottom:0}
 @media(max-width:700px){.camp-card-title,.camp-card-address,.card-extra small,.camp-card-stay small{font-size:inherit}}
 
 .platform-identity{display:inline-flex;align-items:center;gap:8px;max-width:100%;vertical-align:middle}.platform-identity>.platform-logo{display:block;flex:0 0 28px;width:28px;height:28px;object-fit:contain;border-radius:7px;background:#fff;border:1px solid #dce3dc}.platform-identity>span{min-width:0;overflow-wrap:anywhere}
+
+/* Keep representative controls inside the photo, with captions below. */
+.photo-media-frame{position:relative;aspect-ratio:1;isolation:isolate}.photo-media-frame>img{display:block;width:100%;height:100%;object-fit:cover}.photo-media-frame .cover-photo,.photo-cover-badge{position:absolute;left:5px;top:5px;margin:0;padding:3px 6px;border:1px solid #ffffff80;border-radius:6px;font-size:11px;line-height:1.4;letter-spacing:0;background:#172b21d9;color:#fff;z-index:1}.photo-media-frame .cover-photo{max-width:calc(100% - 42px);white-space:nowrap}.photo-cover-badge{pointer-events:none}.photo-media-frame .cover-photo[aria-pressed="true"]{background:#234e43ed;color:#fff}.detail-booking-button{min-height:36px;padding:7px 16px}.detail-map-apps{padding:7px;min-width:38px;min-height:38px}
